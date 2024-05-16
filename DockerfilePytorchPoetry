@@ -1,0 +1,10 @@
+FROM pytorch/pytorch:2.3.0-cuda12.1-cudnn8-runtime
+# WORKDIR /workspace
+
+# Copy project config and install dependencies
+COPY pyproject.toml poetry.lock ./
+RUN pip install poetry==1.8.3
+RUN poetry install
+
+# Start Jupyter server
+CMD jupyter lab --no-browser --ip=0.0.0.0 --allow-root

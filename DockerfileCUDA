@@ -1,0 +1,41 @@
+FROM nvidia/cuda:12.1.0-cudnn8-runtime-ubuntu22.04
+
+# Install Python
+RUN apt update -y && \
+    apt upgrade -y && \
+    apt-get install -y \
+        build-essential \
+        wget \
+        libncursesw5-dev \
+        libreadline-dev \
+        libssl-dev \
+        libsqlite3-dev \
+        tk-dev \
+        libgdbm-dev \
+        libc6-dev \
+        libbz2-dev \
+        libffi-dev \
+        zlib1g-dev && \
+    apt-get clean -y && \
+    cd /usr/src && \
+    wget https://www.python.org/ftp/python/3.10.14/Python-3.10.14.tgz && \
+    tar -zxvf Python-3.10.14.tgz && \
+    cd Python-3.10.14 && \
+    ./configure --enable-optimizations && \
+    make install
+
+ENV PYTHONPATH='/workspace' \ 
+    POETRY_VIRTUALENVS_CREATE=false \
+    POETRY_NO_INTERACTION=1 \
+    POETRY_CACHE_DIR='/var/cache/pypoetry' \
+    POETRY_HOME='/usr/local'
+
+WORKDIR $PYTHONPATH
+
+# Copy project config and install dependencies
+COPY pyproject.toml poetry.lock ./
+RUN pip install poetry==1.8.3
+RUN poetry install
+
+# Start Jupyter server
+CMD jupyter lab --no-browser --ip=0.0.0.0 --allow-root
