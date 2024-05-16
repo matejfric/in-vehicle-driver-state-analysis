@@ -1,1 +1,7 @@
-poetry config virtualenvs.in-project true
+# Corrosion
+
+Quick start:
+
+```shell
+just notebook
+```
