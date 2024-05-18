@@ -20,7 +20,34 @@ tensorboard = "^2.16.2"
 
 [tool.poetry.group.dev.dependencies]
 pre-commit = "^3.7.1"
+pyright = "^1.1.363"
+ruff = "^0.4.4"
 
 [build-system]
 requires = ["poetry-core"]
 build-backend = "poetry.core.masonry.api"
+
+[tool.ruff]
+target-version = "py310"
+
+[tool.ruff.lint]
+ignore = [
+    "ANN101", # no need to annotate self
+    "ANN401", # allow any
+]
+extend-select = [
+    "ANN", # Enable the annotations rules
+    "I",   # Enable the isort rules (sorts imports)
+    "UP",  # Enable pyupgrade rules the keep to code up to date with the latest Python features
+]
+
+[tool.ruff.format]
+quote-style = "single"
+
+[tool.ruff.lint.per-file-ignores]
+"*.ipynb" = [
+    "E402", # Ignore putting imports at the top of files for notebooks => % autoreload at the top of the file.
+]
+
+[tool.pyright]
+typeCheckingMode = "basic"
