@@ -13,6 +13,7 @@ class CorrosionModel(L.LightningModule):
         encoder_name: str,
         in_channels: int,
         out_classes: int,
+        batch_size_dict: dict,
         freeze_encoder: bool = True,
         **kwargs: dict,
     ) -> None:
@@ -26,6 +27,7 @@ class CorrosionModel(L.LightningModule):
             classes=out_classes,
             **kwargs,
         )
+        self.batch_size_dict = batch_size_dict
 
         # Buffers for intermediate results (per batch)
         self.training_step_outputs = []
@@ -115,7 +117,12 @@ class CorrosionModel(L.LightningModule):
             'train_f1s': losses['f1_score'].mean(),
             'train_jaccard': losses['jaccard_index'].mean(),
         }
-        self.log_dict(metrics, on_epoch=True, prog_bar=True)
+        self.log_dict(
+            metrics,
+            on_epoch=True,
+            prog_bar=True,
+            batch_size=self.batch_size_dict['train'],
+        )
         return losses['loss']
 
     def validation_step(self, batch: dict, batch_idx: int) -> None:
@@ -125,7 +132,12 @@ class CorrosionModel(L.LightningModule):
             'val_f1s': losses['f1_score'].mean(),
             'val_jaccard': losses['jaccard_index'].mean(),
         }
-        self.log_dict(metrics, on_epoch=True, prog_bar=True)
+        self.log_dict(
+            metrics,
+            on_epoch=True,
+            prog_bar=True,
+            batch_size=self.batch_size_dict['valid'],
+        )
 
     def test_step(self, batch: dict, batch_idx: int) -> dict:
         losses = self.shared_step(batch)
@@ -134,7 +146,12 @@ class CorrosionModel(L.LightningModule):
             'test_f1s': losses['f1_score'].mean(),
             'test_jaccard': losses['jaccard_index'].mean(),
         }
-        self.log_dict(metrics, on_epoch=True, prog_bar=True)
+        self.log_dict(
+            metrics,
+            on_epoch=True,
+            prog_bar=True,
+            batch_size=self.batch_size_dict['test'],
+        )
         return losses
 
     def configure_optimizers(self) -> torch.optim.Optimizer:
