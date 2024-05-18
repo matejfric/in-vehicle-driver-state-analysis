@@ -6,8 +6,8 @@ from .dataset import (
 from .model import CorrosionModel
 
 __all__ = [
-    "SegmentationDataset",
-    "SegmentationDatasetLoader",
-    "SegmentationDatasetSplit",
-    "CorrosionModel",
+    'SegmentationDataset',
+    'SegmentationDatasetLoader',
+    'SegmentationDatasetSplit',
+    'CorrosionModel',
 ]

@@ -1,10 +1,6 @@
-import torch
 import pytorch_lightning as L
 import segmentation_models_pytorch as smp
-
-
-# changes in lightning 2.0.0:
-# https://github.com/Lightning-AI/pytorch-lightning/pull/16520
+import torch
 
 # Consider changing the evaluation...
 # https://hphuongdhsp.github.io/ml-blog/pytorchlightning/semanticsegmentation/deeplearning/2022/08/04/segmentation-model-part3.html#:~:text=valid_losses%20%3D%20torch.stack(%5Bx%5B%22valid_loss%22%5D%20for%20x%20in%20outputs%5D).mean()%0A%20%20%20%20%20%20%20%20valid_dices%20%3D%20torch.stack(%5Bx%5B%22valid_dice%22%5D%20for%20x%20in%20outputs%5D).mean()%0A%20%20%20%20%20%20%20%20valid_ious%20%3D%20torch.stack(%5Bx%5B%22valid_iou%22%5D%20for%20x%20in%20outputs%5D).mean()
@@ -18,19 +14,20 @@ class CorrosionModel(L.LightningModule):
         in_channels: int,
         out_classes: int,
         freeze_encoder: bool = True,
-        **kwargs,
-    ):
+        **kwargs: dict,
+    ) -> None:
         super().__init__()
         self.save_hyperparameters()  # saves HPs in each checkpoint (arch, encoder_name, in_channels, out_classes, **kwargs)
         self.model = smp.create_model(
             arch,
             encoder_name=encoder_name,
+            encoder_weights='imagenet',
             in_channels=in_channels,
             classes=out_classes,
             **kwargs,
         )
 
-        # buffers for intermediate results (per batch)
+        # Buffers for intermediate results (per batch)
         self.training_step_outputs = []
         self.validation_step_outputs = []
         self.test_step_outputs = []
@@ -43,20 +40,19 @@ class CorrosionModel(L.LightningModule):
 
         # preprocessing parameteres for image
         params = smp.encoders.get_preprocessing_params(encoder_name)
-        self.register_buffer("std", torch.tensor(params["std"]).view(1, 3, 1, 1))
-        self.register_buffer("mean", torch.tensor(params["mean"]).view(1, 3, 1, 1))
+        self.register_buffer('std', torch.tensor(params['std']).view(1, 3, 1, 1))
+        self.register_buffer('mean', torch.tensor(params['mean']).view(1, 3, 1, 1))
 
-        # for image segmentation dice loss could be the best first choice
         self.loss_fn = smp.losses.DiceLoss(smp.losses.BINARY_MODE, from_logits=True)
 
-    def forward(self, image):
+    def forward(self, image: torch.Tensor) -> torch.Tensor:
         # normalize image here
         image = (image - self.mean) / self.std
         mask = self.model(image)
         return mask
 
-    def shared_step(self, batch, stage):
-        image = batch["image"]
+    def shared_step(self, batch: dict) -> dict:
+        image = batch['image']
 
         # Shape of the image should be (batch_size, num_channels, height, width)
         # if you work with grayscale images, expand channels dim to have [batch_size, 1, height, width]
@@ -70,7 +66,7 @@ class CorrosionModel(L.LightningModule):
         # h, w = image.shape[2:]
         # assert h % 32 == 0 and w % 32 == 0
 
-        mask = batch["mask"]
+        mask = batch['mask']
 
         # Shape of the mask should be [batch_size, num_classes, height, width]
         # for binary segmentation num_classes = 1
@@ -97,95 +93,49 @@ class CorrosionModel(L.LightningModule):
         # true negative 'pixels' for each image and class
         # these values will be aggregated in the end of an epoch
         tp, fp, fn, tn = smp.metrics.get_stats(
-            pred_mask.long(), mask.long(), mode="binary"
+            pred_mask.long(), mask.long(), mode='binary'
         )
 
+        # F1-score also happens to be Sørensen–Dice coefficient
         return {
-            "loss": loss,
-            "jaccard_index": tp / (tp + fp + fn),
-            "f1_score": 2
-            * tp
-            / (2 * tp + fp + fn),  # also happens to be Sørensen–Dice coefficient
-            "tp": tp,
-            "fp": fp,
-            "fn": fn,
-            "tn": tn,
+            'loss': loss,
+            'jaccard_index': tp / (tp + fp + fn),
+            'f1_score': 2 * tp / (2 * tp + fp + fn),
+            'tp': tp,
+            'fp': fp,
+            'fn': fn,
+            'tn': tn,
         }
 
-    # def shared_epoch_end(self, outputs, stage):
-    #     # aggregate step metics
-    #     tp = torch.cat([x["tp"] for x in outputs])
-    #     fp = torch.cat([x["fp"] for x in outputs])
-    #     fn = torch.cat([x["fn"] for x in outputs])
-    #     tn = torch.cat([x["tn"] for x in outputs])
-
-    #     # per image IoU means that we first calculate IoU score for each image
-    #     # and then compute mean over these scores
-    #     per_image_iou = smp.metrics.iou_score(tp, fp, fn, tn, reduction="micro-imagewise")
-
-    #     # dataset IoU means that we aggregate intersection and union over whole dataset
-    #     # and then compute IoU score. The difference between dataset_iou and per_image_iou scores
-    #     # in this particular case will not be much, however for dataset
-    #     # with "empty" images (images without target class) a large gap could be observed.
-    #     # Empty images influence a lot on per_image_iou and much less on dataset_iou.
-    #     dataset_iou = smp.metrics.iou_score(tp, fp, fn, tn, reduction="micro")
-
-    #     metrics = {
-    #         f"{stage}_per_image_iou": per_image_iou,
-    #         f"{stage}_dataset_iou": dataset_iou,
-    #     }
-
-    #     self.log_dict(metrics, prog_bar=True)
-
-    def training_step(self, batch, batch_idx):
-        losses = self.shared_step(batch, "train")
+    def training_step(self, batch: dict, batch_idx: int) -> torch.Tensor:
+        losses = self.shared_step(batch)
         # self.training_step_outputs.append(losses["loss"])
         metrics = {
-            "train_loss": losses["loss"],
-            "train_f1s": losses["f1_score"].mean(),
-            "train_jaccard": losses["jaccard_index"].mean(),
+            'train_loss': losses['loss'],
+            'train_f1s': losses['f1_score'].mean(),
+            'train_jaccard': losses['jaccard_index'].mean(),
         }
         self.log_dict(metrics, on_epoch=True, prog_bar=True)
-        return losses["loss"]
+        return losses['loss']
 
-    # def on_train_epoch_end(self):
-    #     epoch_average = torch.stack(self.training_step_outputs).mean()
-    #     self.log("training_epoch_average", epoch_average)
-    #     self.training_step_outputs.clear()  # free memory
-
-    def validation_step(self, batch, batch_idx):
-        losses = self.shared_step(batch, "valid")
+    def validation_step(self, batch: dict, batch_idx: int) -> None:
+        losses = self.shared_step(batch)
         metrics = {
-            "val_loss": losses["loss"],
-            "val_f1s": losses["f1_score"].mean(),
-            "val_jaccard": losses["jaccard_index"].mean(),
+            'val_loss': losses['loss'],
+            'val_f1s': losses['f1_score'].mean(),
+            'val_jaccard': losses['jaccard_index'].mean(),
         }
         self.log_dict(metrics, on_epoch=True, prog_bar=True)
-        # self.validation_step_outputs.append(losses["loss"])
-        # self.log('val_loss', losses["loss"], on_epoch=True, prog_bar=True)
-        # return losses["loss"]
 
-    # def on_validation_epoch_end(self):
-    #     epoch_average = torch.stack(self.validation_step_outputs).mean()
-    #     self.log("validation_epoch_average", epoch_average)
-    #     self.validation_step_outputs.clear()  # free memory
-
-    def test_step(self, batch, batch_idx):
-        losses = self.shared_step(batch, "test")
-        # self.test_step_outputs.append(losses["loss"])
-        # self.log('val_loss', losses["loss"], on_epoch=True, prog_bar=True)
+    def test_step(self, batch: dict, batch_idx: int) -> dict:
+        losses = self.shared_step(batch)
         metrics = {
-            "test_loss": losses["loss"],
-            "test_f1s": losses["f1_score"].mean(),
-            "test_jaccard": losses["jaccard_index"].mean(),
+            'test_loss': losses['loss'],
+            'test_f1s': losses['f1_score'].mean(),
+            'test_jaccard': losses['jaccard_index'].mean(),
         }
         self.log_dict(metrics, on_epoch=True, prog_bar=True)
         return losses
 
-    # def on_test_epoch_end(self):
-    #     epoch_average = torch.stack(self.test_step_outputs).mean()
-    #     self.log("test_epoch_average", epoch_average)
-    #     self.test_step_outputs.clear()  # free memory
-
-    def configure_optimizers(self):
+    def configure_optimizers(self) -> torch.optim.Optimizer:
         return torch.optim.Adam(self.parameters(), lr=0.0001)

@@ -1,13 +1,13 @@
 import albumentations as albu
-from albumentations.pytorch.transforms import ToTensorV2
 import cv2
+from albumentations.pytorch.transforms import ToTensorV2
 
 
-def pre_transforms(image_size: int = 256):
+def pre_transforms(image_size: int = 256) -> list:
     return [albu.Resize(image_size, image_size, p=1, interpolation=cv2.INTER_NEAREST)]
 
 
-def hard_transforms():
+def hard_transforms() -> list:
     """Apply a composition of hard augmentations.
 
     References
@@ -42,9 +42,6 @@ def resize_transforms(image_size: int = 256, pre_size: int = 512) -> list:
     Random crop will crop on an (image_size, image_size) area
     from a (pre_size, pre_size) area.
     """
-    # pre_size = pre_size # input is a 2k image
-    # pre_size = int(image_size * 1.5)
-
     random_crop = albu.Compose(
         [
             albu.SmallestMaxSize(pre_size, p=1, interpolation=cv2.INTER_NEAREST),
@@ -52,23 +49,15 @@ def resize_transforms(image_size: int = 256, pre_size: int = 512) -> list:
         ]
     )
 
-    rescale = albu.Compose([albu.Resize(image_size, image_size, p=1)])
+    rescale = albu.Compose(
+        [albu.Resize(image_size, image_size, p=1, interpolation=cv2.INTER_NEAREST)]
+    )
 
-    # This would be the same as random_crop since we have square images
-    # random_crop_big = albu.Compose([
-    #   albu.LongestMaxSize(pre_size, p=1),
-    #   albu.RandomCrop(
-    #       image_size, image_size, p=1
-    #   )
-    # ])
-
-    # Converts the image to a square of size image_size x image_size
     result = [
         albu.OneOf(
             [
                 random_crop,
                 rescale,
-                # random_crop_big
             ],
             p=1,
         )
@@ -77,14 +66,11 @@ def resize_transforms(image_size: int = 256, pre_size: int = 512) -> list:
     return result
 
 
-def post_transforms():
+def post_transforms() -> list:
     # Image is normalized in CorrosionModel
     return [ToTensorV2(transpose_mask=True, p=1)]
 
 
-def compose_transforms(transforms):
+def compose_transforms(transforms: list) -> albu.Compose:
     # Combine all augmentations into single pipeline
-    result = albu.Compose(
-        [item for sublist in transforms for item in sublist]
-    )
-    return result
+    return albu.Compose([item for sublist in transforms for item in sublist])

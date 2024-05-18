@@ -1,22 +1,29 @@
 import random
 from pathlib import Path
 
-from PIL import Image
 import matplotlib.pyplot as plt
 import numpy as np
+import pandas as pd
+import torch
+from PIL import Image
+from pytorch_lightning import LightningModule
+from torch.utils.data import DataLoader
 
-def show_examples(name: str, image: np.ndarray, mask: np.ndarray):
+
+def show_examples(name: str, image: np.ndarray, mask: np.ndarray) -> None:
     plt.figure(figsize=(10, 14))
     plt.subplot(1, 2, 1)
     plt.imshow(image)
-    plt.title(f"Image: {name}")
+    plt.title(f'Image: {name}')
 
     plt.subplot(1, 2, 2)
     plt.imshow(mask)
-    plt.title(f"Mask: {name}")
+    plt.title(f'Mask: {name}')
 
 
-def show(index: int, images: list[Path], masks: list[Path], transforms=None) -> None:
+def show(
+    index: int, images: list[Path], masks: list[Path], transforms: list | None = None
+) -> None:
     image_path = images[index]
     name = image_path.name
 
@@ -25,13 +32,170 @@ def show(index: int, images: list[Path], masks: list[Path], transforms=None) -> 
 
     if transforms is not None:
         temp = transforms(image=image, mask=mask)
-        image = temp["image"]
-        mask = temp["mask"]
+        image = temp['image']
+        mask = temp['mask']
 
     show_examples(name, image, mask)
 
 
-def show_random(images: list[Path], masks: list[Path], transforms=None) -> None:
+def show_random(
+    images: list[Path], masks: list[Path], transforms: list | None = None
+) -> None:
     length = len(images)
     index = random.randint(0, length - 1)
     show(index, images, masks, transforms)
+
+
+def plot_predictions(
+    model: LightningModule,
+    data_loader: DataLoader,
+    *,
+    figsize: tuple[int, int] = (16, 5),
+) -> None:
+    n_cols = 5
+    for batch in data_loader:
+        with torch.no_grad():
+            model.eval()
+            logits = model(batch['image'])
+        pr_masks = logits.sigmoid()
+
+        for image, gt_mask, pr_mask, img_file in zip(
+            batch['image'], batch['mask'], pr_masks, batch['filename']
+        ):
+            plt.figure(figsize=figsize)
+
+            original_image = image.numpy().transpose(1, 2, 0)  # convert CHW -> HWC
+
+            plt.subplot(1, n_cols, 1)
+            plt.imshow(original_image)
+            plt.title(f'Image {img_file}')
+            plt.axis('off')
+
+            plt.subplot(1, n_cols, 2)
+            # Squeeze classes dim, because we have only one class
+            plt.imshow(gt_mask.numpy().squeeze(), cmap='gray', vmin=0, vmax=1)
+            plt.title('Ground truth')
+            plt.axis('off')
+
+            plt.subplot(1, n_cols, 3)
+            # Squeeze classes dim, because we have only one class
+            pr_mask_squeeze = pr_mask.numpy().squeeze()
+            plt.imshow(pr_mask_squeeze, cmap='gray', vmin=0, vmax=1)
+            plt.title('Probabilities')
+            plt.axis('off')
+
+            plt.subplot(1, n_cols, 4)
+            plt.imshow(
+                np.where(pr_mask_squeeze > 0.5, 1, 0), cmap='gray', vmin=0, vmax=1
+            )
+            plt.title('Binary Prediction')
+            plt.axis('off')
+
+            plt.subplot(1, n_cols, 5)
+            plt.imshow(original_image)
+            plt.title('Overlay')
+            plt.axis('off')
+            alpha = 0.4
+            plt.imshow(pr_mask_squeeze, cmap='jet', alpha=alpha)
+            # plt.colorbar() # TODO
+
+            plt.show()
+
+
+def plot_predictions_compact(
+    model: LightningModule,
+    data_loader: DataLoader,
+    *,
+    n_cols: int = 5,
+    save_path: str | Path | None = None,
+) -> None:
+    n_cols = n_cols
+    batch_size = data_loader.batch_size
+    n = len(data_loader) * batch_size
+
+    # Calculate the number of rows needed
+    n_rows = (n + n_cols - 1) // n_cols  # Ceiling division
+
+    fig, axes = plt.subplots(n_rows, n_cols, figsize=(n_cols * 4, n_rows * 4))
+    axes = axes.flatten()  # Flatten to easily iterate over the axes
+
+    idx = 0
+
+    for batch in data_loader:
+        with torch.no_grad():
+            model.eval()
+            logits = model(batch['image'])
+        pr_masks = logits.sigmoid()
+
+        for image, gt_mask, pr_mask, img_file in zip(
+            batch['image'], batch['mask'], pr_masks, batch['filename']
+        ):
+            if idx >= n:  # Ensure we don't go beyond the total number of images
+                break
+            ax = axes[idx]
+            original_image = image.numpy().transpose(1, 2, 0)  # convert CHW -> HWC
+            ax.imshow(original_image)
+            ax.imshow(pr_mask.numpy().squeeze(), cmap='jet', alpha=0.4)
+            ax.set_title(img_file)
+            ax.axis('off')
+            idx += 1
+
+    # Hide any remaining empty subplots
+    for i in range(idx, len(axes)):
+        axes[i].axis('off')
+
+    plt.tight_layout()
+
+    if save_path:
+        plt.savefig(save_path)
+
+    plt.show()
+
+
+def plot_learning_curves(
+    csv_log_path: str | Path, save_path: str | Path | None = None
+) -> None:
+    """Plot learning curves from a CSV log file generated by PyTorch Lightning.
+
+    Parameters
+    ----------
+    csv_log_path : str or Path
+        Path to the CSV log file.
+    """
+
+    path = Path(csv_log_path)
+    if not path.exists():
+        raise FileNotFoundError(f'File {path} not found')
+
+    df = pd.read_csv(Path(csv_log_path))
+    df = df.drop(columns=[col for col in df.columns if '_epoch' in col] + ['step'])
+    df = df.rename(columns={col: col.replace('_step', '') for col in df.columns})
+    df.head()
+
+    # Group by epoch ignoring NaN values
+    df_epoch = df.groupby('epoch').mean().reset_index()
+
+    # Plot learning curves
+    fig, ax = plt.subplots(1, 3, figsize=(15, 5))
+
+    df_epoch.plot(x='epoch', y=['train_loss', 'val_loss'], ax=ax[0], title='Loss')
+    ax[0].legend(['Training loss', 'Validation loss'])
+    ax[0].set_ylabel('Loss')
+    df_epoch.plot(
+        x='epoch', y=['train_jaccard', 'val_jaccard'], ax=ax[1], title='Jaccard index'
+    )
+    ax[1].legend(['Training Jaccard index', 'Validation Jaccard index'])
+    ax[1].set_ylabel('Jaccard index')
+    df_epoch.plot(x='epoch', y=['train_f1s', 'val_f1s'], ax=ax[2], title='F1 score')
+    ax[2].legend(['Training F1 score', 'Validation F1 score'])
+    ax[2].set_ylabel('F1 score')
+
+    for a in ax:
+        a.set_xlabel('Epoch')
+
+    plt.tight_layout()
+
+    if save_path:
+        plt.savefig(save_path)
+
+    plt.show()

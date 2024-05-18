@@ -1,17 +1,20 @@
-from pathlib import Path
-from collections import OrderedDict
-from typing import Optional, Callable
-from dataclasses import dataclass
 import logging
+from collections import OrderedDict
+from dataclasses import dataclass
+from pathlib import Path
 
-from torch.utils.data import Dataset, DataLoader
-from PIL import Image
+import albumentations as albu
 import numpy as np
+from PIL import Image
+from torch.utils.data import DataLoader, Dataset
 
 
 class SegmentationDataset(Dataset):
     def __init__(
-        self, images: list[Path], masks: list[Path] | None = None, transforms=None
+        self,
+        images: list[Path],
+        masks: list[Path] | None = None,
+        transforms: albu.Compose | None = None,
     ) -> None:
         self.images = images
         self.masks = masks
@@ -22,32 +25,36 @@ class SegmentationDataset(Dataset):
 
     def __getitem__(self, idx: int) -> dict:
         image_path = self.images[idx]
-        image_pil = Image.open(image_path).convert("RGB")
+        image_pil = Image.open(image_path).convert('RGB')
         image = np.array(image_pil)
 
-        result = {"image": image}
+        result = {'image': image}
 
         if self.masks is not None:
-            mask_pil = Image.open(self.masks[idx]).convert("L")
+            mask_pil = Image.open(self.masks[idx]).convert('L')
             mask = (np.array(mask_pil) > 0).astype(np.float32)
-            result["mask"] = mask
+            result['mask'] = mask
 
         if self.transforms is not None:
             result = self.transforms(**result)
-            result["mask"] = np.expand_dims(result["mask"], 0)  # CWH
+            result['mask'] = np.expand_dims(
+                result['mask'], 0
+            )  # [batch_size, num_classes, height, width]
         else:
             # This is done by albu.ToTensorV2()
-            result["mask"] = np.expand_dims(result["mask"], 0)  # CWH
-            result["image"] = np.moveaxis(result["image"], -1, 0)  # CWH
+            result['mask'] = np.expand_dims(result['mask'], 0)  # CWH
+            result['image'] = np.moveaxis(result['image'], -1, 0)  # CWH
 
-        result["filename"] = image_path.name
+        result['filename'] = image_path.name
 
         return result
-    
+
+
 @dataclass
 class SegmentationDatasetSplit:
     images: list[Path]
     masks: list[Path]
+
 
 @dataclass
 class SegmentationDatasetLoader:
@@ -55,10 +62,11 @@ class SegmentationDatasetLoader:
     valid: SegmentationDatasetSplit
     test: SegmentationDatasetSplit
 
-    def __post_init__(self):
+    def __post_init__(self) -> None:
         self._validate_names()
+        self._validate_shapes()
 
-    def _validate_names(self):
+    def _validate_names(self) -> None:
         def validate(images: list[Path], masks: list[Path]) -> bool:
             image_names = sorted([img.stem for img in images])
             mask_names = sorted([mask.stem for mask in masks])
@@ -69,46 +77,76 @@ class SegmentationDatasetLoader:
         test_validated = validate(self.test.images, self.test.masks)
 
         if not all([train_validated, valid_validated, test_validated]):
-            raise ValueError("Mismatch in names between images and masks.")
+            raise ValueError('Mismatch in names between images and masks.')
         else:
-            logging.info("Dataset paths validated successfully!")
+            logging.info('Dataset paths validated successfully!')
 
-    def __str__(self):
-        return f"Train:\n{self.train}\n\nValid:\n{self.valid}\n\nTest:\n{self.test}"
+    def _validate_shapes(self) -> None:
+        def validate_shapes(images: list[Path], masks: list[Path]) -> bool:
+            for img_path, mask_path in zip(images, masks):
+                img_shape = get_image_shape(img_path)
+                mask_shape = get_image_shape(mask_path)
+                if img_shape != mask_shape:
+                    return False
+            return True
+
+        def get_image_shape(image_path: Path) -> tuple[int, int]:
+            img = Image.open(image_path)
+            return img.size[::-1]
+
+        train_validated = validate_shapes(self.train.images, self.train.masks)
+        valid_validated = validate_shapes(self.valid.images, self.valid.masks)
+        test_validated = validate_shapes(self.test.images, self.test.masks)
+
+        if not all([train_validated, valid_validated, test_validated]):
+            raise ValueError('Images and masks do not have the same shape.')
+        else:
+            logging.info('Shapes of images and masks validated successfully!')
+
+    def __str__(self) -> str:
+        return f'Train:\n{self.train}\n\nValid:\n{self.valid}\n\nTest:\n{self.test}'
 
     def get_loaders(
         self,
-        batch_size: dict = {"train": 8, "valid": 1, "test": 1},
+        batch_size: dict = {'train': 8, 'valid': 1, 'test': 1},
         num_workers: int = 4,
-        train_transforms_fn: Optional[Callable] = None,
-        valid_transforms_fn: Optional[Callable] = None,
-        test_transforms_fn: Optional[Callable] = None,
+        train_transforms: albu.Compose | None = None,
+        valid_transforms: albu.Compose | None = None,
+        test_transforms: albu.Compose | None = None,
     ) -> dict:
+        if any(
+            [
+                train_transforms is None,
+                valid_transforms is None,
+                test_transforms is None,
+            ]
+        ):
+            logging.warning('Transforms not provided. Loaders will return raw images.')
 
         # Create train dataset
         train_dataset = SegmentationDataset(
             images=self.train.images,
             masks=self.train.masks,
-            transforms = train_transforms_fn
+            transforms=train_transforms,
         )
 
         # Create valid dataset
         valid_dataset = SegmentationDataset(
             images=self.valid.images,
             masks=self.valid.masks,
-            transforms = valid_transforms_fn
+            transforms=valid_transforms,
         )
 
         # Create test dataset
         test_dataset = SegmentationDataset(
             images=self.test.images,
             masks=self.test.masks,
-            transforms=test_transforms_fn
+            transforms=test_transforms,
         )
 
         train_loader = DataLoader(
             train_dataset,
-            batch_size=batch_size["train"],
+            batch_size=batch_size['train'],
             shuffle=True,
             num_workers=num_workers,
             drop_last=True,
@@ -116,23 +154,23 @@ class SegmentationDatasetLoader:
 
         valid_loader = DataLoader(
             valid_dataset,
-            batch_size=batch_size["valid"],
+            batch_size=batch_size['valid'],
             shuffle=False,
             num_workers=num_workers,
-            drop_last=True,
+            drop_last=False,
         )
 
         test_loader = DataLoader(
             test_dataset,
-            batch_size=batch_size["test"],
+            batch_size=batch_size['test'],
             shuffle=False,
             num_workers=num_workers,
-            drop_last=True,
+            drop_last=False,
         )
 
         loaders = OrderedDict()
-        loaders["train"] = train_loader
-        loaders["valid"] = valid_loader
-        loaders["test"] = test_loader
+        loaders['train'] = train_loader
+        loaders['valid'] = valid_loader
+        loaders['test'] = test_loader
 
         return loaders
