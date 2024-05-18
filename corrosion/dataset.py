@@ -58,6 +58,10 @@ class SegmentationDatasetSplit:
 
 @dataclass
 class SegmentationDatasetLoader:
+    """Dataclass to hold the train, valid, and test datasets.
+    Automatically validates dataset paths and shapes of images and masks.
+    """
+
     train: SegmentationDatasetSplit
     valid: SegmentationDatasetSplit
     test: SegmentationDatasetSplit
@@ -78,6 +82,12 @@ class SegmentationDatasetLoader:
 
         if not all([train_validated, valid_validated, test_validated]):
             raise ValueError('Mismatch in names between images and masks.')
+        elif (
+            len(self.train.images) < 1
+            or len(self.valid.images) < 1
+            or len(self.test.images) < 1
+        ):
+            raise ValueError('Empty dataset. Please check the dataset paths.')
         else:
             logging.info('Dataset paths validated successfully!')
 
@@ -114,6 +124,7 @@ class SegmentationDatasetLoader:
         valid_transforms: albu.Compose | None = None,
         test_transforms: albu.Compose | None = None,
     ) -> dict:
+        """Create dataloaders for train, valid, and test datasets."""
         if any(
             [
                 train_transforms is None,
