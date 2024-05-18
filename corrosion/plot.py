@@ -1,6 +1,7 @@
 import random
 from pathlib import Path
 
+import albumentations as albu
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
@@ -22,7 +23,10 @@ def show_examples(name: str, image: np.ndarray, mask: np.ndarray) -> None:
 
 
 def show(
-    index: int, images: list[Path], masks: list[Path], transforms: list | None = None
+    index: int,
+    images: list[Path],
+    masks: list[Path],
+    transforms: albu.Compose | None = None,
 ) -> None:
     image_path = images[index]
     name = image_path.name
@@ -39,7 +43,7 @@ def show(
 
 
 def show_random(
-    images: list[Path], masks: list[Path], transforms: list | None = None
+    images: list[Path], masks: list[Path], transforms: albu.Compose | None = None
 ) -> None:
     length = len(images)
     index = random.randint(0, length - 1)
@@ -109,12 +113,11 @@ def plot_predictions_compact(
     n_cols: int = 5,
     save_path: str | Path | None = None,
 ) -> None:
-    n_cols = n_cols
-    batch_size = data_loader.batch_size
-    n = len(data_loader) * batch_size
+    batch_size = data_loader.batch_size if data_loader.batch_size else 1
+    n_data = len(data_loader) * batch_size
 
     # Calculate the number of rows needed
-    n_rows = (n + n_cols - 1) // n_cols  # Ceiling division
+    n_rows = (n_data + n_cols - 1) // n_cols  # Ceiling division
 
     fig, axes = plt.subplots(n_rows, n_cols, figsize=(n_cols * 4, n_rows * 4))
     axes = axes.flatten()  # Flatten to easily iterate over the axes
@@ -130,7 +133,7 @@ def plot_predictions_compact(
         for image, gt_mask, pr_mask, img_file in zip(
             batch['image'], batch['mask'], pr_masks, batch['filename']
         ):
-            if idx >= n:  # Ensure we don't go beyond the total number of images
+            if idx >= n_data:  # Ensure we don't go beyond the total number of images
                 break
             ax = axes[idx]
             original_image = image.numpy().transpose(1, 2, 0)  # convert CHW -> HWC
@@ -167,7 +170,7 @@ def plot_learning_curves(
     if not path.exists():
         raise FileNotFoundError(f'File {path} not found')
 
-    df = pd.read_csv(Path(csv_log_path))
+    df = pd.read_csv(path)
     df = df.drop(columns=[col for col in df.columns if '_epoch' in col] + ['step'])
     df = df.rename(columns={col: col.replace('_step', '') for col in df.columns})
     df.head()
