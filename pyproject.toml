@@ -6,7 +6,7 @@ authors = ["Matěj Frič <matej.fric@vsb.cz>"]
 readme = "README.md"
 
 [tool.poetry.dependencies]
-python = "3.10.14"
+python = "^3.10.0" # 3.10.14
 jupyterlab = "^4.0.0"
 dagshub = "^0.3.0"
 mlflow = "^2.12.2"
