@@ -14,9 +14,9 @@ class CorrosionModel(L.LightningModule):
         in_channels: int,
         out_classes: int,
         batch_size_dict: dict,
-        *,
         freeze_encoder: bool = True,
         encoder_weights: str | None = 'imagenet',
+        learning_rate: float = 1e-4,
         **kwargs: dict,
     ) -> None:
         super().__init__()
@@ -30,6 +30,7 @@ class CorrosionModel(L.LightningModule):
             **kwargs,
         )
         self.batch_size_dict = batch_size_dict
+        self.lr = learning_rate
 
         # Buffers for intermediate results (per batch)
         self.training_step_outputs = []
@@ -157,4 +158,4 @@ class CorrosionModel(L.LightningModule):
         return losses
 
     def configure_optimizers(self) -> torch.optim.Optimizer:
-        return torch.optim.Adam(self.parameters(), lr=0.0001)
+        return torch.optim.Adam(self.parameters(), lr=self.lr)
