@@ -14,7 +14,9 @@ class CorrosionModel(L.LightningModule):
         in_channels: int,
         out_classes: int,
         batch_size_dict: dict,
+        *,
         freeze_encoder: bool = True,
+        encoder_weights: str | None = 'imagenet',
         **kwargs: dict,
     ) -> None:
         super().__init__()
@@ -22,7 +24,7 @@ class CorrosionModel(L.LightningModule):
         self.model = smp.create_model(
             arch,
             encoder_name=encoder_name,
-            encoder_weights='imagenet',
+            encoder_weights=encoder_weights,
             in_channels=in_channels,
             classes=out_classes,
             **kwargs,
