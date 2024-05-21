@@ -181,16 +181,24 @@ def plot_learning_curves(
     # Plot learning curves
     fig, ax = plt.subplots(1, 3, figsize=(15, 5))
 
-    df_epoch.plot(x='epoch', y=['train_loss', 'val_loss'], ax=ax[0], title='Loss')
-    ax[0].legend(['Training loss', 'Validation loss'])
+    df_epoch.plot(
+        x='epoch', y=['train_loss', 'val_loss'], ax=ax[0], title='Loss', linewidth=2
+    )
+    ax[0].legend(['Training loss', 'Validation loss'], frameon=True)
     ax[0].set_ylabel('Loss')
     df_epoch.plot(
-        x='epoch', y=['train_jaccard', 'val_jaccard'], ax=ax[1], title='Jaccard index'
+        x='epoch',
+        y=['train_jaccard', 'val_jaccard'],
+        ax=ax[1],
+        title='Jaccard index',
+        linewidth=2,
     )
-    ax[1].legend(['Training Jaccard index', 'Validation Jaccard index'])
+    ax[1].legend(['Training Jaccard index', 'Validation Jaccard index'], frameon=True)
     ax[1].set_ylabel('Jaccard index')
-    df_epoch.plot(x='epoch', y=['train_f1s', 'val_f1s'], ax=ax[2], title='F1 score')
-    ax[2].legend(['Training F1 score', 'Validation F1 score'])
+    df_epoch.plot(
+        x='epoch', y=['train_f1s', 'val_f1s'], ax=ax[2], title='F1 score', linewidth=2
+    )
+    ax[2].legend(['Training F1 score', 'Validation F1 score'], frameon=True)
     ax[2].set_ylabel('F1 score')
 
     for a in ax:
