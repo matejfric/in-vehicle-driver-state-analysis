@@ -109,10 +109,26 @@ def plot_predictions(
 def plot_predictions_compact(
     model: LightningModule,
     data_loader: DataLoader,
-    *,
     n_cols: int = 5,
+    threshold: float = 0.5,
     save_path: str | Path | None = None,
 ) -> None:
+    """Plot predictions from a model on a dataset.
+
+    Parameters
+    ----------
+    model : LightningModule
+        PyTorch Lightning model.
+    data_loader : DataLoader
+        PyTorch DataLoader.
+    n_cols : int, default=5
+        Number of columns in the plot, by default 5.
+    threshold : float, default=0.5
+        Threshold to apply to the predicted masks. 
+        Everything below the threshold is set to 0.
+    save_path : str or Path or None, optional
+        Path to save the plot.
+    """
     batch_size = data_loader.batch_size if data_loader.batch_size else 1
     n_data = len(data_loader) * batch_size
 
@@ -137,8 +153,10 @@ def plot_predictions_compact(
                 break
             ax = axes[idx]
             original_image = image.numpy().transpose(1, 2, 0)  # convert CHW -> HWC
+            overlay = pr_mask.numpy().squeeze()
+            overlay[overlay < threshold] = 0
             ax.imshow(original_image)
-            ax.imshow(pr_mask.numpy().squeeze(), cmap='jet', alpha=0.4)
+            ax.imshow(overlay, cmap='jet', alpha=0.4 * (overlay > 0))
             ax.set_title(img_file)
             ax.axis('off')
             idx += 1
