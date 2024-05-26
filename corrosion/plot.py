@@ -50,6 +50,50 @@ def show_random(
     show(index, images, masks, transforms)
 
 
+def plot_single_prediction(
+    image: Image.Image,
+    mask: torch.Tensor,
+    *,
+    figsize: tuple[int, int] = (16, 5),
+    threshold: float = 0.5,
+) -> None:
+    n_cols = 4
+    plt.figure(figsize=figsize)
+
+    # Squeeze batch and class dimension (binary classification)
+    pr_mask_squeeze = mask.squeeze().numpy()
+    image_resized = image.resize(pr_mask_squeeze.shape)
+
+    plt.subplot(1, n_cols, 1)
+    plt.imshow(image_resized)
+    plt.title('Input image')
+    plt.axis('off')
+
+    plt.subplot(1, n_cols, 2)
+    
+    plt.imshow(pr_mask_squeeze, cmap='gray', vmin=0, vmax=1)
+    plt.title('Probabilities')
+    plt.axis('off')
+
+    plt.subplot(1, n_cols, 3)
+    plt.imshow(
+        np.where(pr_mask_squeeze > 0.5, 1, 0), cmap='gray', vmin=0, vmax=1
+    )
+    plt.title('Binary Prediction')
+    plt.axis('off')
+
+    plt.subplot(1, n_cols, 4)
+    plt.imshow(image_resized)
+    plt.title('Overlay')
+    plt.axis('off')
+    overlay = pr_mask_squeeze.copy()
+    overlay[overlay < threshold] = 0
+    alpha = 0.4
+    plt.imshow(overlay, cmap='jet', alpha=alpha* (overlay > 0))
+
+    plt.show()
+
+
 def plot_predictions(
     model: LightningModule,
     data_loader: DataLoader,
