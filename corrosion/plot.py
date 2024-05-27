@@ -156,6 +156,7 @@ def plot_predictions_compact(
     n_cols: int = 5,
     threshold: float = 0.5,
     save_path: str | Path | None = None,
+    cmap: str = 'winter',
 ) -> None:
     """Plot predictions from a model on a dataset.
 
@@ -172,6 +173,8 @@ def plot_predictions_compact(
         Everything below the threshold is set to 0.
     save_path : str or Path or None, optional
         Path to save the plot.
+    cmap : str, default='winter'
+        Colormap to use for the overlay.
     """
     batch_size = data_loader.batch_size if data_loader.batch_size else 1
     n_data = len(data_loader) * batch_size
@@ -200,7 +203,7 @@ def plot_predictions_compact(
             overlay = pr_mask.numpy().squeeze()
             overlay[overlay < threshold] = 0
             ax.imshow(original_image)
-            ax.imshow(overlay, cmap='jet', alpha=0.4 * (overlay > 0))
+            ax.imshow(overlay, cmap=cmap, alpha=0.4 * (overlay > 0))
             ax.set_title(img_file)
             ax.axis('off')
             idx += 1
