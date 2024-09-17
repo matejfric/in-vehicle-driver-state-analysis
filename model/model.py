@@ -6,7 +6,7 @@ import torch
 # https://hphuongdhsp.github.io/ml-blog/pytorchlightning/semanticsegmentation/deeplearning/2022/08/04/segmentation-model-part3.html#:~:text=valid_losses%20%3D%20torch.stack(%5Bx%5B%22valid_loss%22%5D%20for%20x%20in%20outputs%5D).mean()%0A%20%20%20%20%20%20%20%20valid_dices%20%3D%20torch.stack(%5Bx%5B%22valid_dice%22%5D%20for%20x%20in%20outputs%5D).mean()%0A%20%20%20%20%20%20%20%20valid_ious%20%3D%20torch.stack(%5Bx%5B%22valid_iou%22%5D%20for%20x%20in%20outputs%5D).mean()
 
 
-class CorrosionModel(L.LightningModule):
+class SegmentationModel(L.LightningModule):
     def __init__(
         self,
         arch: str,

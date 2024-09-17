@@ -3,11 +3,11 @@ from .dataset import (
     SegmentationDatasetLoader,
     SegmentationDatasetSplit,
 )
-from .model import CorrosionModel
+from .model import SegmentationModel
 
 __all__ = [
     'SegmentationDataset',
     'SegmentationDatasetLoader',
     'SegmentationDatasetSplit',
-    'CorrosionModel',
+    'SegmentationModel',
 ]

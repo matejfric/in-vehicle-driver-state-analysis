@@ -20,23 +20,35 @@ class SegmentationDataset(Dataset):
         self.masks = masks
         self.transforms = transforms
 
+    def _crop_image(self, image: Image.Image, image_path: Path) -> Image.Image:
+        if image_path.stem.startswith('2021_08_28'):
+            # `2021_08_28_radovan_night_mask` different camera placement
+            return image.crop((250, 0, 250 + image.size[1], image.size[1]))
+        return image.crop((0, 0, image.size[1], image.size[1]))
+
     def __len__(self) -> int:
         return len(self.images)
 
     def __getitem__(self, idx: int) -> dict:
         image_path = self.images[idx]
         image_pil = Image.open(image_path).convert('RGB')
+        # Crop from the left to create a square crop while maintaining the height
+        image_pil = self._crop_image(image_pil, image_path)
         image = np.array(image_pil)
 
         result = {'image': image}
 
         if self.masks is not None:
             mask_pil = Image.open(self.masks[idx]).convert('L')
+
+            # Crop from the left to create a square crop while maintaining the height
+            mask_pil = self._crop_image(mask_pil, image_path)
+            
             mask = (np.array(mask_pil) > 0).astype(np.float32)
             result['mask'] = mask
 
         if self.transforms is not None:
-            result = self.transforms(**result)
+            result = self.transforms(**result)  # type: ignore
             result['mask'] = np.expand_dims(
                 result['mask'], 0
             )  # [batch_size, num_classes, height, width]
@@ -45,7 +57,7 @@ class SegmentationDataset(Dataset):
             result['mask'] = np.expand_dims(result['mask'], 0)  # CWH
             result['image'] = np.moveaxis(result['image'], -1, 0)  # CWH
 
-        result['filename'] = image_path.name
+        result['filename'] = image_path.name  # type: ignore
 
         return result
 
@@ -102,7 +114,7 @@ class SegmentationDatasetLoader:
 
         def get_image_shape(image_path: Path) -> tuple[int, int]:
             img = Image.open(image_path)
-            return img.size[::-1]
+            return img.size[::-1]  # type: ignore
 
         train_validated = validate_shapes(self.train.images, self.train.masks)
         valid_validated = validate_shapes(self.valid.images, self.valid.masks)
