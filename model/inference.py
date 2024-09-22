@@ -6,6 +6,7 @@ import dagshub
 import mlflow.pytorch
 import numpy as np
 import requests
+import skimage.measure
 import torch
 import torch.nn.functional as F
 from PIL import Image
@@ -67,7 +68,7 @@ def predict(
     output_size: tuple[int, int] | None = None,
 ) -> torch.Tensor:
     """Perform inference on the given image using the model.
-    
+
     Parameters
     ----------
     output_size : tuple[int, int] | None
@@ -140,3 +141,34 @@ def measure_model_fps(
     print(f'Total inference time: {total_inference_time:.2f} seconds')
     print(f'Image loading FPS: {loading_fps:.2f}')
     print(f'Inference FPS: {inference_fps:.2f}')
+
+
+def filter_small_segments(mask: np.ndarray, min_area: int) -> np.ndarray:
+    """
+    Filters out small connected segments in a binary segmentation mask based on area.
+
+    Parameters
+    ----------
+    mask: np.ndarray
+        Binary segmentation mask.
+    min_area: int
+        Minimum area of a segment to keep.
+    """
+    # Label the connected components in the mask (4-connectivity)
+    labeled_mask = skimage.measure.label(mask, connectivity=1)
+
+    # Get the properties of the labeled regions
+    properties = skimage.measure.regionprops(labeled_mask)
+
+    # Create an empty mask to store the filtered segments
+    filtered_mask = np.zeros_like(mask, dtype=np.uint8)
+
+    # Iterate through the regions and keep only the ones with an area larger than `min_area`
+    if len(properties) > 1:
+        for prop in properties:
+            if prop.area >= min_area:
+                filtered_mask[labeled_mask == prop.label] = 1
+    else:
+        filtered_mask = mask
+
+    return filtered_mask
