@@ -2,6 +2,7 @@ import logging
 from collections import OrderedDict
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Literal
 
 import albumentations as albu
 import numpy as np
@@ -43,7 +44,7 @@ class SegmentationDataset(Dataset):
 
             # Crop from the left to create a square crop while maintaining the height
             mask_pil = self._crop_image(mask_pil, image_path)
-            
+
             mask = (np.array(mask_pil) > 0).astype(np.float32)
             result['mask'] = mask
 
@@ -56,6 +57,64 @@ class SegmentationDataset(Dataset):
             # This is done by albu.ToTensorV2()
             result['mask'] = np.expand_dims(result['mask'], 0)  # CWH
             result['image'] = np.moveaxis(result['image'], -1, 0)  # CWH
+
+        result['filename'] = image_path.name  # type: ignore
+
+        return result
+
+
+class AnomalyDataset(Dataset):
+    """
+    - Dataset for anomaly detection autoencoder.
+    - Loads images and masks.
+    - Masks are used to crop the area of interest from the images.
+    """
+
+    def __init__(
+        self,
+        images: list[Path],
+        masks: list[Path],
+        transforms: albu.Compose | None = None,
+    ) -> None:
+        self.images = images
+        self.masks = masks
+        self.transforms = transforms
+
+    def _crop_image(self, image: Image.Image, image_path: Path) -> Image.Image:
+        if image_path.stem.startswith('2021_08_28'):
+            # `2021_08_28_radovan_night_mask` different camera placement
+            return image.crop((250, 0, 250 + image.size[1], image.size[1]))
+        return image.crop((0, 0, image.size[1], image.size[1]))
+
+    def __len__(self) -> int:
+        return len(self.images)
+
+    def __getitem__(self, idx: int) -> dict:
+        image_path = self.images[idx]
+        image_pil = Image.open(image_path).convert('L')
+        mask_pil = Image.open(self.masks[idx]).convert('L')
+
+        # Crop from the left to create a square crop while maintaining the height
+        image_pil = self._crop_image(image_pil, image_path)
+        mask_pil = self._crop_image(mask_pil, image_path)
+
+        image = np.array(image_pil).astype(np.float32)
+        mask = (np.array(mask_pil) > 0).astype(np.float32)
+        image *= mask  # Apply mask to the image
+        image /= image.max()  # Normalize to [0, 1]
+        # image = np.expand_dims(image, 0)
+
+        result = {'image': image}
+
+        if self.transforms is not None:
+            result = self.transforms(**result)  # type: ignore
+        #     result['mask'] = np.expand_dims(
+        #         result['mask'], 0
+        #     )  # [batch_size, num_classes, height, width]
+        # else:
+        #     # This is done by albu.ToTensorV2()
+        #     result['mask'] = np.expand_dims(result['mask'], 0)  # CWH
+        #     result['image'] = np.moveaxis(result['image'], -1, 0)  # CWH
 
         result['filename'] = image_path.name  # type: ignore
 
@@ -130,6 +189,7 @@ class SegmentationDatasetLoader:
 
     def get_loaders(
         self,
+        dataset: Literal['segmentation', 'anomaly'] = 'segmentation',
         batch_size: dict = {'train': 8, 'valid': 1, 'test': 1},
         num_workers: int = 4,
         train_transforms: albu.Compose | None = None,
@@ -146,26 +206,38 @@ class SegmentationDatasetLoader:
         ):
             logging.warning('Transforms not provided. Loaders will return raw images.')
 
-        # Create train dataset
-        train_dataset = SegmentationDataset(
-            images=self.train.images,
-            masks=self.train.masks,
-            transforms=train_transforms,
-        )
-
-        # Create valid dataset
-        valid_dataset = SegmentationDataset(
-            images=self.valid.images,
-            masks=self.valid.masks,
-            transforms=valid_transforms,
-        )
-
-        # Create test dataset
-        test_dataset = SegmentationDataset(
-            images=self.test.images,
-            masks=self.test.masks,
-            transforms=test_transforms,
-        )
+        if dataset == 'segmentation':
+            train_dataset = SegmentationDataset(
+                images=self.train.images,
+                masks=self.train.masks,
+                transforms=train_transforms,
+            )
+            valid_dataset = SegmentationDataset(
+                images=self.valid.images,
+                masks=self.valid.masks,
+                transforms=valid_transforms,
+            )
+            test_dataset = SegmentationDataset(
+                images=self.test.images,
+                masks=self.test.masks,
+                transforms=test_transforms,
+            )
+        elif dataset == 'anomaly':
+            train_dataset = AnomalyDataset(
+                images=self.train.images,
+                masks=self.train.masks,
+                transforms=train_transforms,
+            )
+            valid_dataset = AnomalyDataset(
+                images=self.valid.images,
+                masks=self.valid.masks,
+                transforms=valid_transforms,
+            )
+            test_dataset = AnomalyDataset(
+                images=self.test.images,
+                masks=self.test.masks,
+                transforms=test_transforms,
+            )
 
         train_loader = DataLoader(
             train_dataset,
