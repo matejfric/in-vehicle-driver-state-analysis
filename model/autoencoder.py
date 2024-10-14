@@ -74,7 +74,7 @@ class AutoencoderModel(L.LightningModule):
         encoded = self.encoder(image)
 
         # Add noise to the latent space representation
-        encoded += torch.randn_like(encoded) * self.train_noise_std_latent
+        encoded = encoded + torch.randn_like(encoded) * self.train_noise_std_latent
         decoded = self.decoder(encoded)
 
         return decoded
