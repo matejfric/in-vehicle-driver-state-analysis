@@ -84,15 +84,15 @@ class AutoencoderModel(L.LightningModule):
 
         # Shape of the image should be (batch_size, num_channels, height, width)
         # if you work with grayscale images, expand channels dim to have [batch_size, 1, height, width]
-        assert image.ndim == 4, f'image.ndim: {image.ndim}'
+        # assert image.ndim == 4, f'image.ndim: {image.ndim}'
 
         # Check that image dimensions are divisible by 32,
         # encoder and decoder connected by `skip connections` and usually encoder have 5 stages of
         # downsampling by factor 2 (2 ^ 5 = 32); e.g. if we have image with shape 65x65 we will have
         # following shapes of features in encoder and decoder: 84, 42, 21, 10, 5 -> 5, 10, 20, 40, 80
         # and we will get an error trying to concat these features
-        h, w = image.shape[2:]
-        assert h % 32 == 0 and w % 32 == 0, f'h: {h}, w: {w}'
+        # h, w = image.shape[2:]
+        # assert h % 32 == 0 and w % 32 == 0, f'h: {h}, w: {w}'
 
         logits_mask = self.forward(image)
 

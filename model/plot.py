@@ -235,9 +235,10 @@ def plot_predictions_compact(
 def plot_autoencoder_reconstruction(
     model: LightningModule,
     data_loader: DataLoader,
-    path_to_jpg: str | Path,
+    dataset_path: str | Path,
     save_path: str | Path | None = None,
     limit: int | None = None,
+    random_shuffle: bool = False,
 ) -> None:
     """Plot predictions from a model on a dataset.
 
@@ -247,12 +248,14 @@ def plot_autoencoder_reconstruction(
         PyTorch Lightning model.
     data_loader : DataLoader
         PyTorch DataLoader.
-    path_to_jpg : str | Path
-        Path to the directory containing the original images in JPG format.
+    dataset_path : str | Path
+        Path to the root directory containing the original images in JPG format.
     save_path : str | Path | None, default=None
         Path to save the plot.
     limit : int | None, default=None
         Limit the number of images to plot.
+    random_shuffle : bool, default=False
+        Shuffle the batches before plotting.
     """
     batch_size = data_loader.batch_size if data_loader.batch_size else 1
 
@@ -265,34 +268,59 @@ def plot_autoencoder_reconstruction(
 
     idx = 0
 
-    if not path_to_jpg or not (path_to_jpg := Path(path_to_jpg)).exists():
-        raise FileNotFoundError(f'Path `{path_to_jpg}` does not exist.')
+    if not dataset_path or not (dataset_path := Path(dataset_path)).exists():
+        raise FileNotFoundError(f'Path `{dataset_path}` does not exist.')
 
-    for batch in data_loader:
+    if random_shuffle:
+        batches = list(data_loader)
+        random.shuffle(batches)
+    else:
+        batches = data_loader
+
+    for batch in batches:
         with torch.no_grad():
             model.eval()
             results = model(batch['image'])
 
         for image, result, img_file in zip(batch['image'], results, batch['filename']):
-            # if (
-            #     idx >= n_cols * n_data
-            # ):  # Ensure we don't go beyond the total number of images
-            #     break
+            for stage in ['train', 'validation', 'test']:
+                # Try to load the original image in JPG format
+                try:
+                    original_image = Image.open(
+                        jpg_path := (
+                            dataset_path / stage / 'images' / img_file
+                        ).with_suffix('.jpg')
+                    )
+                except FileNotFoundError:
+                    continue
+                else:
+                    break  # Found the original image
 
-            original_image = Image.open(
-                jpg_path := (path_to_jpg / img_file).with_suffix('.jpg')
-            )
             original_image = crop_driver_image(original_image, jpg_path).resize(
                 (image.shape[2], image.shape[1])
             )
             input_image = image.numpy().transpose(1, 2, 0)  # convert CHW -> HWC
             reconst_image = result.numpy().transpose(1, 2, 0)  # convert CHW -> HWC
 
+            frobenius_norm = np.linalg.norm(
+                (input_image - reconst_image).squeeze(), ord='fro'
+            )
+            mse = np.mean((input_image - reconst_image).squeeze() ** 2)
+
             axes[idx + 1].set_title(img_file)
 
             axes[idx].imshow(original_image)
             axes[idx + 1].imshow(input_image, cmap='gray')
             axes[idx + 2].imshow(reconst_image, cmap='gray')
+            axes[idx + 2].text(
+                1.05,
+                1.0,
+                f'MSE={mse:.3f}\nFRO={frobenius_norm:.3f}',
+                bbox={'facecolor': 'white', 'pad': 10},
+                horizontalalignment='left',
+                verticalalignment='center',
+                transform=axes[idx + 2].transAxes,
+            )
 
             idx += n_cols
             if limit and idx >= n_cols * limit:
