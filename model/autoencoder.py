@@ -1,23 +1,45 @@
-from typing import Literal
+from typing import Any, Literal, TypeAlias
 
 import pytorch_lightning as L
 import torch
 import torch.nn as nn
 import torch.optim
 
+from ae.common import Decoder, Encoder
+
+Stages: TypeAlias = Literal['train', 'valid', 'test']
+
 
 class AutoencoderModel(L.LightningModule):
     def __init__(
         self,
-        encoder: nn.Sequential,
-        decoder: nn.Sequential,
+        encoder: Encoder,
+        decoder: Decoder,
         batch_size_dict: dict,
         learning_rate: float = 1e-4,
         loss_function: Literal['fro', 'mse'] = 'mse',
         train_noise_std_input: float = 0.0,
         train_noise_std_latent: float = 0.0,
-        **kwargs: dict,
+        **kwargs: dict[Any, Any],
     ) -> None:
+        """Autoencoder model.
+
+        Parameters
+        ----------
+        encoder : Encoder
+            Encoder model.
+        decoder : Decoder
+            Decoder model.
+        batch_size_dict : dict
+            Dictionary with batch sizes for `train`, `valid`, and `test` datasets.
+        learning_rate : float, default=1e-4
+        loss_function : {'fro', 'mse'}, default='mse'
+        train_noise_std_input: float, default=0.0
+            Standard deviation of the Gaussian noise added to the input image.
+        train_noise_std_latent: float, default=0.0
+            Standard deviation of the Gaussian noise added to the latent space representation.
+        kwargs : dict
+        """
         super().__init__()
         self.save_hyperparameters(ignore=['encoder', 'decoder'])
 
@@ -45,25 +67,15 @@ class AutoencoderModel(L.LightningModule):
 
         Note
         ----
-        https://stackoverflow.com/a/59044860
+        Gaussian noise in torch: https://stackoverflow.com/a/59044860
         """
         # Add noise to the input image
-        # image += torch.randn_like(image) * self.train_noise_std_input
-
-        print(f'Image shape: {image.shape}')
-
+        image += torch.randn_like(image) * self.train_noise_std_input
         encoded = self.encoder(image)
 
-        print("Can't get here ¯\\_(ツ)_/¯")
-
-        # assert encoded.shape == (32, 16, 16, 16), f'encoded.shape: {encoded.shape}'
-
         # Add noise to the latent space representation
-        # encoded += torch.randn_like(encoded) * self.train_noise_std_latent
-
+        encoded += torch.randn_like(encoded) * self.train_noise_std_latent
         decoded = self.decoder(encoded)
-
-        assert decoded.shape == image.shape, f'decoded.shape: {decoded.shape}'
 
         return decoded
 
@@ -88,8 +100,6 @@ class AutoencoderModel(L.LightningModule):
         mse = self.mse(logits_mask, image)
         fro = self.fro(logits_mask, image)
 
-        print(f'mse: {mse.mean()}, fro: {fro.mean()}')
-
         loss = mse if self.loss_function == 'mse' else fro
 
         return {
@@ -101,7 +111,7 @@ class AutoencoderModel(L.LightningModule):
     def log_metrics(
         self,
         losses: dict[str, torch.Tensor],
-        mode: Literal['train', 'val', 'test'],
+        mode: Stages,
     ) -> None:
         metrics = {
             f'{mode}_loss': losses['loss'],
@@ -124,7 +134,7 @@ class AutoencoderModel(L.LightningModule):
 
     def validation_step(self, batch: dict, batch_idx: int) -> None:
         losses = self.shared_step(batch)
-        self.log_metrics(losses, 'val')
+        self.log_metrics(losses, 'valid')
 
     def test_step(self, batch: dict, batch_idx: int) -> dict:
         losses = self.shared_step(batch)
@@ -137,14 +147,13 @@ class AutoencoderModel(L.LightningModule):
 
     def configure_optimizers(
         self,
-    ) -> tuple[
-        list[torch.optim.Optimizer], list[torch.optim.lr_scheduler._LRScheduler]
-    ]:
-        optimizer = torch.optim.AdamW(self.parameters(), lr=self.lr)
+    ) -> tuple[list[torch.optim.Optimizer], list[torch.optim.lr_scheduler.LRScheduler]]:  # type: ignore
+        optimizer = torch.optim.AdamW(self.parameters(), lr=self.lr)  # type: ignore
 
         # https://hphuongdhsp.github.io/ml-blog/pytorchlightning/semanticsegmentation/deeplearning/2022/08/04/segmentation-model-part3.html
         scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
-            optimizer, self.trainer.max_epochs
+            optimizer,
+            self.trainer.max_epochs,  # type: ignore
         )
 
         return [optimizer], [scheduler]

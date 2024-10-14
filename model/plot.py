@@ -255,13 +255,10 @@ def plot_autoencoder_reconstruction(
         Limit the number of images to plot.
     """
     batch_size = data_loader.batch_size if data_loader.batch_size else 1
-    n_data = len(data_loader) * batch_size if limit is None else limit
 
     # Calculate the number of rows needed
     n_cols = 3
-    n_rows = (
-        len(data_loader) * batch_size if limit is None else limit
-    )  # (n_data + n_cols - 1) // n_cols  # Ceiling division
+    n_rows = len(data_loader) * batch_size if limit is None else limit
 
     fig, axes = plt.subplots(n_rows, n_cols, figsize=(n_cols * 4, n_rows * 4))
     axes = axes.flatten()  # type: ignore
