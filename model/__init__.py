@@ -1,9 +1,9 @@
 from .autoencoder import AutoencoderModel
 from .dataset import (
     AnomalyDataset,
+    DatasetPathsLoader,
+    DatasetSplit,
     SegmentationDataset,
-    SegmentationDatasetLoader,
-    SegmentationDatasetSplit,
 )
 from .model import SegmentationModel
 
@@ -11,7 +11,7 @@ __all__ = [
     'AnomalyDataset',
     'AutoencoderModel',
     'SegmentationDataset',
-    'SegmentationDatasetLoader',
-    'SegmentationDatasetSplit',
+    'DatasetPathsLoader',
+    'DatasetSplit',
     'SegmentationModel',
 ]

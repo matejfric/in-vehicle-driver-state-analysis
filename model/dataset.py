@@ -9,6 +9,8 @@ import numpy as np
 from PIL import Image
 from torch.utils.data import DataLoader, Dataset
 
+from .common import crop_driver_image
+
 
 class SegmentationDataset(Dataset):
     def __init__(
@@ -21,12 +23,6 @@ class SegmentationDataset(Dataset):
         self.masks = masks
         self.transforms = transforms
 
-    def _crop_image(self, image: Image.Image, image_path: Path) -> Image.Image:
-        if image_path.stem.startswith('2021_08_28'):
-            # `2021_08_28_radovan_night_mask` different camera placement
-            return image.crop((250, 0, 250 + image.size[1], image.size[1]))
-        return image.crop((0, 0, image.size[1], image.size[1]))
-
     def __len__(self) -> int:
         return len(self.images)
 
@@ -34,7 +30,7 @@ class SegmentationDataset(Dataset):
         image_path = self.images[idx]
         image_pil = Image.open(image_path).convert('RGB')
         # Crop from the left to create a square crop while maintaining the height
-        image_pil = self._crop_image(image_pil, image_path)
+        image_pil = crop_driver_image(image_pil, image_path)
         image = np.array(image_pil)
 
         result = {'image': image}
@@ -43,7 +39,7 @@ class SegmentationDataset(Dataset):
             mask_pil = Image.open(self.masks[idx]).convert('L')
 
             # Crop from the left to create a square crop while maintaining the height
-            mask_pil = self._crop_image(mask_pil, image_path)
+            mask_pil = crop_driver_image(mask_pil, image_path)
 
             mask = (np.array(mask_pil) > 0).astype(np.float32)
             result['mask'] = mask
@@ -80,12 +76,6 @@ class AnomalyDataset(Dataset):
         self.masks = masks
         self.transforms = transforms
 
-    def _crop_image(self, image: Image.Image, image_path: Path) -> Image.Image:
-        if image_path.stem.startswith('2021_08_28'):
-            # `2021_08_28_radovan_night_mask` different camera placement
-            return image.crop((250, 0, 250 + image.size[1], image.size[1]))
-        return image.crop((0, 0, image.size[1], image.size[1]))
-
     def __len__(self) -> int:
         return len(self.images)
 
@@ -94,27 +84,18 @@ class AnomalyDataset(Dataset):
         image_pil = Image.open(image_path).convert('L')
         mask_pil = Image.open(self.masks[idx]).convert('L')
 
-        # Crop from the left to create a square crop while maintaining the height
-        image_pil = self._crop_image(image_pil, image_path)
-        mask_pil = self._crop_image(mask_pil, image_path)
+        image_pil = crop_driver_image(image_pil, image_path)
+        mask_pil = crop_driver_image(mask_pil, image_path)
 
         image = np.array(image_pil).astype(np.float32)
         mask = (np.array(mask_pil) > 0).astype(np.float32)
         image *= mask  # Apply mask to the image
         image /= image.max()  # Normalize to [0, 1]
-        # image = np.expand_dims(image, 0)
 
         result = {'image': image}
 
         if self.transforms is not None:
             result = self.transforms(**result)  # type: ignore
-        #     result['mask'] = np.expand_dims(
-        #         result['mask'], 0
-        #     )  # [batch_size, num_classes, height, width]
-        # else:
-        #     # This is done by albu.ToTensorV2()
-        #     result['mask'] = np.expand_dims(result['mask'], 0)  # CWH
-        #     result['image'] = np.moveaxis(result['image'], -1, 0)  # CWH
 
         result['filename'] = image_path.name  # type: ignore
 
@@ -122,20 +103,20 @@ class AnomalyDataset(Dataset):
 
 
 @dataclass
-class SegmentationDatasetSplit:
+class DatasetSplit:
     images: list[Path]
     masks: list[Path]
 
 
 @dataclass
-class SegmentationDatasetLoader:
+class DatasetPathsLoader:
     """Dataclass to hold the train, valid, and test datasets.
     Automatically validates dataset paths and shapes of images and masks.
     """
 
-    train: SegmentationDatasetSplit
-    valid: SegmentationDatasetSplit
-    test: SegmentationDatasetSplit
+    train: DatasetSplit
+    valid: DatasetSplit
+    test: DatasetSplit
 
     def __post_init__(self) -> None:
         self._validate_names()
