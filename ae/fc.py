@@ -9,7 +9,7 @@ from .common import Decoder, Encoder
 
 class FCEncoder(Encoder):
     def __init__(self, image_size: int, hidden_layer_size: int = 512) -> None:
-        super().__init__()
+        super(Encoder, self).__init__()
         divisibility_constraint = 8
         assert (
             (hls := hidden_layer_size) % divisibility_constraint == 0
@@ -35,7 +35,7 @@ class FCEncoder(Encoder):
 
 class FCDecoder(Decoder):
     def __init__(self, image_size: int, hidden_layer_size: int = 512) -> None:
-        super().__init__()
+        super(Decoder, self).__init__()
         divisibility_constraint = 8
         assert (
             (hls := hidden_layer_size) % divisibility_constraint == 0

@@ -6,7 +6,7 @@ from .common import Decoder, Encoder
 
 class ConvEncoder(Encoder):
     def __init__(self) -> None:
-        super().__init__()
+        super(Encoder, self).__init__()
         self.conv1 = nn.Conv2d(in_channels=1, out_channels=8, kernel_size=7, padding=3)
         self.relu1 = nn.ReLU()
         self.pool1 = nn.MaxPool2d(kernel_size=2, stride=2)  # 256->128
@@ -48,7 +48,7 @@ class ConvEncoder(Encoder):
 
 class ConvDecoder(Decoder):
     def __init__(self) -> None:
-        super().__init__()
+        super(Decoder, self).__init__()
         self.deconv1 = nn.ConvTranspose2d(
             in_channels=16,
             out_channels=16,
