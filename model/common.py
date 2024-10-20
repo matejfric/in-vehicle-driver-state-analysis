@@ -1,6 +1,13 @@
 from pathlib import Path
+from typing import TypedDict
 
 from PIL import Image
+
+
+class BatchSizeDict(TypedDict):
+    train: int
+    valid: int
+    test: int
 
 
 def crop_driver_image(image: Image.Image, image_path: Path) -> Image.Image:

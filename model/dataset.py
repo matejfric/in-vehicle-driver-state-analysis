@@ -2,14 +2,20 @@ import logging
 from collections import OrderedDict
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Literal
+from typing import Literal, TypedDict, cast
 
 import albumentations as albu
 import numpy as np
 from PIL import Image
 from torch.utils.data import DataLoader, Dataset
 
-from .common import crop_driver_image
+from .common import BatchSizeDict, crop_driver_image
+
+
+class DatasetItem(TypedDict):
+    image: np.ndarray
+    mask: np.ndarray
+    filename: str
 
 
 class SegmentationDataset(Dataset):
@@ -26,7 +32,7 @@ class SegmentationDataset(Dataset):
     def __len__(self) -> int:
         return len(self.images)
 
-    def __getitem__(self, idx: int) -> dict:
+    def __getitem__(self, idx: int) -> DatasetItem:
         image_path = self.images[idx]
         image_pil = Image.open(image_path).convert('RGB')
         # Crop from the left to create a square crop while maintaining the height
@@ -56,7 +62,7 @@ class SegmentationDataset(Dataset):
 
         result['filename'] = image_path.name  # type: ignore
 
-        return result
+        return cast(DatasetItem, result)
 
 
 class AnomalyDataset(Dataset):
@@ -71,15 +77,30 @@ class AnomalyDataset(Dataset):
         images: list[Path],
         masks: list[Path],
         transforms: albu.Compose | None = None,
+        input_transforms: albu.Compose | None = None,
     ) -> None:
+        """Dataset for anomaly detection autoencoder.
+
+        Parameters
+        ----------
+        images : list[Path]
+            List of image paths.
+        masks : list[Path]
+            List of mask paths. In the context of anomaly detection, masks are used to crop the area of interest from the images.
+        transforms : albu.Compose, default=None
+            Compose object with albumentations transforms.
+        input_transforms : albu.Compose, default=None
+            Compose object with albumentations transforms to apply to the input image only.
+        """
         self.images = images
         self.masks = masks
         self.transforms = transforms
+        self.input_transforms = input_transforms
 
     def __len__(self) -> int:
         return len(self.images)
 
-    def __getitem__(self, idx: int) -> dict:
+    def __getitem__(self, idx: int) -> DatasetItem:
         image_path = self.images[idx]
         image_pil = Image.open(image_path).convert('L')
         mask_pil = Image.open(self.masks[idx]).convert('L')
@@ -89,17 +110,30 @@ class AnomalyDataset(Dataset):
 
         image = np.array(image_pil).astype(np.float32)
         mask = (np.array(mask_pil) > 0).astype(np.float32)
-        image *= mask  # Apply mask to the image
-        image /= image.max()  # Normalize to [0, 1]
 
-        result = {'image': image}
+        # Apply mask to the image
+        image *= mask
+
+        # Normalize to [0, 1]
+        image /= 255.0
+
+        # Add channel dimension (HWC), image will be converted to CHW format by ToTensorV2.
+        image = np.expand_dims(image, 2)
+
+        result = {'image': image, 'mask': image}
 
         if self.transforms is not None:
-            result = self.transforms(**result)  # type: ignore
+            # Apply basic transforms to both input and output images
+            result = self.transforms(image=result['image'], mask=result['mask'])
 
-        result['filename'] = image_path.name  # type: ignore
+        if self.input_transforms is not None:
+            result['image'] = self.input_transforms(image=result['image'])  # type: ignore
 
-        return result
+        return DatasetItem(
+            image=result['image'],  # type: ignore
+            mask=result['mask'],
+            filename=image_path.name,
+        )
 
 
 @dataclass
@@ -171,11 +205,12 @@ class DatasetPathsLoader:
     def get_loaders(
         self,
         dataset: Literal['segmentation', 'anomaly'] = 'segmentation',
-        batch_size: dict = {'train': 8, 'valid': 1, 'test': 1},
+        batch_size_dict: BatchSizeDict = {'train': 8, 'valid': 1, 'test': 1},
         num_workers: int = 4,
         train_transforms: albu.Compose | None = None,
         valid_transforms: albu.Compose | None = None,
         test_transforms: albu.Compose | None = None,
+        ae_input_transforms: albu.Compose | None = None,
     ) -> dict:
         """Create dataloaders for train, valid, and test datasets."""
         if any(
@@ -208,6 +243,7 @@ class DatasetPathsLoader:
                 images=self.train.images,
                 masks=self.train.masks,
                 transforms=train_transforms,
+                input_transforms=ae_input_transforms,
             )
             valid_dataset = AnomalyDataset(
                 images=self.valid.images,
@@ -222,7 +258,7 @@ class DatasetPathsLoader:
 
         train_loader = DataLoader(
             train_dataset,
-            batch_size=batch_size['train'],
+            batch_size=batch_size_dict['train'],
             shuffle=True,
             num_workers=num_workers,
             drop_last=True,
@@ -230,7 +266,7 @@ class DatasetPathsLoader:
 
         valid_loader = DataLoader(
             valid_dataset,
-            batch_size=batch_size['valid'],
+            batch_size=batch_size_dict['valid'],
             shuffle=False,
             num_workers=num_workers,
             drop_last=False,
@@ -238,7 +274,7 @@ class DatasetPathsLoader:
 
         test_loader = DataLoader(
             test_dataset,
-            batch_size=batch_size['test'],
+            batch_size=batch_size_dict['test'],
             shuffle=False,
             num_workers=num_workers,
             drop_last=False,
