@@ -120,14 +120,13 @@ class AnomalyDataset(Dataset):
         # Add channel dimension (HWC), image will be converted to CHW format by ToTensorV2.
         image = np.expand_dims(image, 2)
 
-        result = {'image': image, 'mask': image}
-
         if self.transforms is not None:
             # Apply basic transforms to both input and output images
-            result = self.transforms(image=result['image'], mask=result['mask'])
+            result = self.transforms(image=image, mask=image)
 
         if self.input_transforms is not None:
-            result['image'] = self.input_transforms(image=result['image'])  # type: ignore
+            augmented_image = self.input_transforms(image=image)  # type: ignore
+            result['image'] = augmented_image['image']
 
         return DatasetItem(
             image=result['image'],  # type: ignore
