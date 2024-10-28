@@ -6,10 +6,10 @@ from typing import Literal, TypedDict, cast
 
 import albumentations as albu
 import numpy as np
-from PIL import Image
-from torch.utils.data import DataLoader, Dataset
 import torch
 import torchvision.transforms as T
+from PIL import Image
+from torch.utils.data import DataLoader, Dataset
 
 from .common import BatchSizeDict, crop_driver_image
 from .memory_map import MemMapReader
@@ -166,6 +166,7 @@ class TemporalAutoencoderDataset(Dataset):
         self.memory_map_file = memory_map_file
         self.memory_map = MemMapReader(memory_map_file, memory_map_image_shape)
         self.window_size = window_size
+        self.default_transform = T.ToTensor()
         self.transforms = transforms
         self.input_transforms = input_transforms
 
@@ -181,8 +182,9 @@ class TemporalAutoencoderDataset(Dataset):
         temporal_slice = self.memory_map.window(
             idx * self.window_size, self.window_size
         )
+        # Memory map is read-only, so we need to copy the images.
         temporal_slice = [
-            T.ToTensor(np.expand_dims(image, 2))  # type: ignore
+            self.default_transform(np.expand_dims(np.copy(image), 2))
             for image in temporal_slice
         ]
         temporal_tensor = torch.stack(temporal_slice)  # type: ignore
@@ -209,10 +211,14 @@ class DatasetPathsLoader:
     train: DatasetSplit
     valid: DatasetSplit
     test: DatasetSplit
+    validate_names: bool = True
+    validate_shapes: bool = True
 
     def __post_init__(self) -> None:
-        self._validate_names()
-        self._validate_shapes()
+        if self.validate_names:
+            self._validate_names()
+        if self.validate_shapes:
+            self._validate_shapes()
 
     def _validate_names(self) -> None:
         def validate(images: list[Path], masks: list[Path]) -> bool:
@@ -262,15 +268,13 @@ class DatasetPathsLoader:
 
     def get_loaders(
         self,
-        dataset: Literal['segmentation', 'anomaly', 'temporal'] = 'segmentation',
+        dataset: Literal['segmentation', 'anomaly'] = 'segmentation',
         batch_size_dict: BatchSizeDict = {'train': 8, 'valid': 1, 'test': 1},
         num_workers: int = 4,
         train_transforms: albu.Compose | None = None,
         valid_transforms: albu.Compose | None = None,
         test_transforms: albu.Compose | None = None,
         ae_input_transforms: albu.Compose | None = None,
-        memory_map_file: Path | str | None = None,
-        memory_map_image_shape: tuple[int, int] = (256, 256),
     ) -> dict:
         """Create dataloaders for train, valid, and test datasets."""
         if any(
@@ -313,25 +317,6 @@ class DatasetPathsLoader:
             test_dataset = AnomalyDataset(
                 images=self.test.images,
                 masks=self.test.masks,
-                transforms=test_transforms,
-            )
-        elif dataset == 'temporal':
-            if not memory_map_file:
-                raise ValueError('Memory map file not provided.')
-            train_dataset = TemporalAutoencoderDataset(
-                memory_map_file=memory_map_file,
-                memory_map_image_shape=memory_map_image_shape,
-                transforms=train_transforms,
-                input_transforms=ae_input_transforms,
-            )
-            valid_dataset = TemporalAutoencoderDataset(
-                memory_map_file=memory_map_file,
-                memory_map_image_shape=memory_map_image_shape,
-                transforms=valid_transforms,
-            )
-            test_dataset = TemporalAutoencoderDataset(
-                memory_map_file=memory_map_file,
-                memory_map_image_shape=memory_map_image_shape,
                 transforms=test_transforms,
             )
 
