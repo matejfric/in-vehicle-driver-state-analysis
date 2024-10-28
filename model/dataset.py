@@ -8,14 +8,17 @@ import albumentations as albu
 import numpy as np
 from PIL import Image
 from torch.utils.data import DataLoader, Dataset
+import torch
+import torchvision.transforms as T
 
 from .common import BatchSizeDict, crop_driver_image
+from .memory_map import MemMapReader
 
 
 class DatasetItem(TypedDict):
-    image: np.ndarray
-    mask: np.ndarray
-    filename: str
+    image: np.ndarray | torch.Tensor
+    mask: np.ndarray | torch.Tensor
+    filename: str | int
 
 
 class SegmentationDataset(Dataset):
@@ -136,6 +139,61 @@ class AnomalyDataset(Dataset):
         )
 
 
+class TemporalAutoencoderDataset(Dataset):
+    def __init__(
+        self,
+        memory_map_file: Path | str,
+        memory_map_image_shape: tuple[int, int] = (256, 256),
+        window_size: int = 4,
+        transforms: albu.Compose | None = None,
+        input_transforms: albu.Compose | None = None,
+    ) -> None:
+        """Dataset for temporal autoencoder.
+
+        Parameters
+        ----------
+        memory_map_file : Path | str
+            Path to `numpy.memmap` file (`.dat`).
+        memory_map_image_shape : tuple[int, int], default=(256, 256)
+            Shape of the images in `memory_map_file`.
+        window_size : int, default=4
+            Number of frames to include in each sample.
+        transforms : albu.Compose, default=None
+            Compose object with albumentations transforms.
+        input_transforms : albu.Compose, default=None
+            Compose object with albumentations transforms to apply to the input image only.
+        """
+        self.memory_map_file = memory_map_file
+        self.memory_map = MemMapReader(memory_map_file, memory_map_image_shape)
+        self.window_size = window_size
+        self.transforms = transforms
+        self.input_transforms = input_transforms
+
+    def __len__(self) -> int:
+        """
+        Number of temporal slices in the dataset.
+        If the number of images is not divisible by the window size,
+        the last samples will be discarded.
+        """
+        return len(self.memory_map) // self.window_size
+
+    def __getitem__(self, idx: int) -> DatasetItem:
+        temporal_slice = self.memory_map.window(
+            idx * self.window_size, self.window_size
+        )
+        temporal_slice = [
+            T.ToTensor(np.expand_dims(image, 2))  # type: ignore
+            for image in temporal_slice
+        ]
+        temporal_tensor = torch.stack(temporal_slice)  # type: ignore
+
+        return DatasetItem(
+            image=temporal_tensor,
+            mask=temporal_tensor,
+            filename=idx,
+        )
+
+
 @dataclass
 class DatasetSplit:
     images: list[Path]
@@ -204,13 +262,15 @@ class DatasetPathsLoader:
 
     def get_loaders(
         self,
-        dataset: Literal['segmentation', 'anomaly'] = 'segmentation',
+        dataset: Literal['segmentation', 'anomaly', 'temporal'] = 'segmentation',
         batch_size_dict: BatchSizeDict = {'train': 8, 'valid': 1, 'test': 1},
         num_workers: int = 4,
         train_transforms: albu.Compose | None = None,
         valid_transforms: albu.Compose | None = None,
         test_transforms: albu.Compose | None = None,
         ae_input_transforms: albu.Compose | None = None,
+        memory_map_file: Path | str | None = None,
+        memory_map_image_shape: tuple[int, int] = (256, 256),
     ) -> dict:
         """Create dataloaders for train, valid, and test datasets."""
         if any(
@@ -253,6 +313,25 @@ class DatasetPathsLoader:
             test_dataset = AnomalyDataset(
                 images=self.test.images,
                 masks=self.test.masks,
+                transforms=test_transforms,
+            )
+        elif dataset == 'temporal':
+            if not memory_map_file:
+                raise ValueError('Memory map file not provided.')
+            train_dataset = TemporalAutoencoderDataset(
+                memory_map_file=memory_map_file,
+                memory_map_image_shape=memory_map_image_shape,
+                transforms=train_transforms,
+                input_transforms=ae_input_transforms,
+            )
+            valid_dataset = TemporalAutoencoderDataset(
+                memory_map_file=memory_map_file,
+                memory_map_image_shape=memory_map_image_shape,
+                transforms=valid_transforms,
+            )
+            test_dataset = TemporalAutoencoderDataset(
+                memory_map_file=memory_map_file,
+                memory_map_image_shape=memory_map_image_shape,
                 transforms=test_transforms,
             )
 
