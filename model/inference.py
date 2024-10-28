@@ -29,9 +29,7 @@ def load_model_from_dagshub(model_name: str, model_version: int) -> torch.nn.Mod
     return model
 
 
-def preprocess_image(
-    image: Image.Image, input_size: int = 256, apply_square_crop: bool = True
-) -> torch.Tensor:
+def preprocess_image(image: Image.Image, input_size: int = 256) -> torch.Tensor:
     # Crop from the left to create a square crop while maintaining the height
     # if apply_square_crop:
     #     image = image.crop((0, 0, image.size[1], image.size[1]))

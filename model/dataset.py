@@ -33,6 +33,7 @@ class SegmentationDataset(Dataset):
         return len(self.images)
 
     def __getitem__(self, idx: int) -> DatasetItem:
+        """Image will be scaled in the SegmentationModel."""
         image_path = self.images[idx]
         image_pil = Image.open(image_path).convert('RGB')
         # Crop from the left to create a square crop while maintaining the height
