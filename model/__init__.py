@@ -6,7 +6,7 @@ from .dataset import (
     DatasetSplit,
     SegmentationDataset,
 )
-from .model import SegmentationModel
+from .segmentation_model import SegmentationModel
 
 __all__ = [
     'AnomalyDataset',
