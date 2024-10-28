@@ -8,7 +8,7 @@ from tqdm import tqdm
 from .common import crop_driver_image_contains
 
 
-def crop_driver_and_resize(image_path: Path, resize: tuple[int, int]) -> np.ndarray:
+def crop_resize_driver(image_path: Path, resize: tuple[int, int]) -> np.ndarray:
     image_pil = Image.open(image_path)
     image_pil = crop_driver_image_contains(image_pil, image_path)
     image_pil = image_pil.resize(resize)
@@ -35,7 +35,7 @@ class MemMapWriter:
         self,
         image_paths: Iterable[Path],
         output_file: Path | str = 'mem_map.dat',
-        func: Callable = crop_driver_and_resize,
+        func: Callable = crop_resize_driver,
         resize: tuple[int, int] = (256, 256),
         dtype: type = np.uint8,
     ) -> None:
@@ -70,16 +70,16 @@ class MemMapWriter:
         return len(self.image_paths)
 
     def __repr__(self):
-        return f'MemMap with {len(self):,} images.'
+        return f'MemMap with {len(self):,} images:\n- Output file: {self.output_file}\n- Resize: {self.resize}\n- dtype: {self.dtype.__name__}\n- func: {self.func.__name__}'
 
-    def __enter__(self):
-        """Setup memory-mapped file for writing."""
-        self.output_file.parent.mkdir(parents=True, exist_ok=True)
+    def write(self):
+        """Process images with `func` and write them to the memory-mapped file."""
 
         if self.output_file.exists():
             raise FileExistsError(f'{self.output_file} already exists.')
         if self.output_file.suffix != '.dat':
             raise ValueError('`output_file` must have a `.dat` extension.')
+        self.output_file.parent.mkdir(parents=True, exist_ok=True)
 
         self.memmap_array = np.memmap(
             self.output_file,
@@ -87,25 +87,11 @@ class MemMapWriter:
             mode='w+',
             shape=(len(self), *self.resize),
         )
-        self._in_context = True  # Entering context
-        return self
-
-    def __exit__(self, exc_type, exc_val, exc_tb):
-        """Flush changes and clean up resources on exit."""
-        if self.memmap_array is not None:
-            self.memmap_array.flush()  # type: ignore
-            self.memmap_array = None
-        self._in_context = False  # Exiting context
-
-    def write(self):
-        """Write processed images to the memory-mapped file."""
-        if not self._in_context:
-            raise RuntimeError(
-                'The `write` method can only be called within a context manager.'
-            )
 
         for i, image in tqdm(enumerate(self()), total=len(self), desc='Saving memmap'):
             self.memmap_array[i] = image  # type: ignore
+
+        self.memmap_array.flush()  # type: ignore
 
 
 class MemMapReader:
@@ -141,6 +127,9 @@ class MemMapReader:
     def __iter__(self):
         for i in range(self.n_images):
             yield self.memmap[i]
+
+    def __repr__(self):
+        return f'MemMap with {len(self):,} images:\n- File: {self.memmap_file}\n- Shape: {self.shape}'
 
     def window(self, start: int, window_size: int) -> list[np.ndarray]:
         return [self[i] for i in range(start, min(start + window_size, self.n_images))]
