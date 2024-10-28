@@ -1,43 +1,151 @@
+from typing import Any, Literal
+
+import pytorch_lightning as L
 import torch
 import torch.nn as nn
+import torch.optim
+from torchmetrics.functional import mean_absolute_error, mean_squared_error
+
+from model.common import BatchSizeDict, ModelStages
 
 from .common import Decoder, Encoder, TimeDistributed
 
 
-class TemporalAutoencoder(nn.Module):
+class TemporalAutoencoderModel(L.LightningModule):
     def __init__(
         self,
-        n_time_steps: int = 2,
-        image_size: int = 256,
-        n_image_channels: int = 1,
-        n_filters: int = 8,
-        n_fc_neurons: int = 128,
-        n_lstm_neurons: int = 128,
-        latent_dim: int = 48,
+        encoder: Encoder,
+        decoder: Decoder,
+        batch_size_dict: BatchSizeDict,
+        learning_rate: float = 1e-4,
+        loss_function: Literal['mae', 'mse'] = 'mse',
+        train_noise_std_input: float = 0.0,
+        train_noise_std_latent: float = 0.0,
+        **kwargs: dict[Any, Any],
     ) -> None:
-        """Temporal Autoencoder. Input shape: `(batch_size, n_time_steps, n_image_channels, image_size, image_size)`"""
-        super().__init__()
+        """Temporal autoencoder model.
 
-        self.encoder = LSTMEncoder(
-            n_time_steps=n_time_steps,
-            n_filters=n_filters,
-            n_fc_neurons=n_fc_neurons,
-            n_lstm_neurons=n_lstm_neurons,
-            latent_dim=latent_dim,
-        )
-        self.decoder = LSTMDecoder(
-            n_time_steps=n_time_steps,
-            image_size=image_size,
-            n_image_channels=n_image_channels,
-            n_filters=n_filters,
-            n_lstm_neurons=n_lstm_neurons,
-            latent_dim=latent_dim,
+        Parameters
+        ----------
+        encoder : Encoder
+            Encoder model.
+        decoder : Decoder
+            Decoder model.
+        batch_size_dict : dict
+            Dictionary with batch sizes for `train`, `valid`, and `test` datasets.
+        learning_rate : float, default=1e-4
+        loss_function : {'fro', 'mse'}, default='mse'
+        train_noise_std_input: float, default=0.0
+            Standard deviation of the Gaussian noise added to the input image.
+        train_noise_std_latent: float, default=0.0
+            Standard deviation of the Gaussian noise added to the latent space representation.
+        kwargs : dict
+        """
+        super().__init__(**kwargs)
+        self.save_hyperparameters(ignore=['encoder', 'decoder'])
+
+        self.encoder = encoder
+        self.decoder = decoder
+
+        self.batch_size_dict = batch_size_dict
+        self.lr = learning_rate
+
+        self.train_noise_std_input = train_noise_std_input
+        self.train_noise_std_latent = train_noise_std_latent
+
+        loss_functions = {'mae': nn.SmoothL1Loss(), 'mse': nn.MSELoss()}
+        self.loss_function = loss_functions[loss_function]
+        self.metrics_ = dict(
+            mae=mean_absolute_error,
+            mse=mean_squared_error,
+            fro=lambda x, y: torch.norm(x - y, dim=1, p='fro'),
         )
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        x = self.encoder(x)
-        x = self.decoder(x)
-        return x
+    def forward(self, image: torch.Tensor) -> torch.Tensor:
+        """Forward pass.
+
+        Note
+        ----
+        Gaussian noise in torch: https://stackoverflow.com/a/59044860
+        """
+        # Add noise to the input image
+        image += torch.randn_like(image) * self.train_noise_std_input
+        encoded = self.encoder(image)
+
+        # Add noise to the latent space representation
+        encoded = encoded + torch.randn_like(encoded) * self.train_noise_std_latent
+        decoded = self.decoder(encoded)
+
+        return decoded
+
+    def shared_step(self, batch: dict[str, torch.Tensor]) -> dict:
+        images = batch['image']  # input images
+        outputs = batch['mask']  # ground truth
+        reconstructed = self.forward(images)  # reconstructed images
+
+        # The tensors have shape `(batch_size, temporal_dim, channels, height, width)`
+        # We need to compute the loss and metrics for each temporal dimension
+        # and then average them.
+
+        loss = 0
+        metrics = {k: 0 for k in self.metrics_}
+        temporal_dim = images.shape[1]
+
+        for t in range(temporal_dim):
+            # The `contiguous` is not the most efficient, but torchmetrics are using
+            # `view` internally in places where `reshape` should be used.
+            recon_slice = reconstructed[:, t].contiguous()
+            output_slice = outputs[:, t].contiguous()
+
+            # Accumulate loss for each temporal slice
+            loss += self.loss_function(recon_slice, output_slice)
+
+            # Accumulate metrics for each temporal slice
+            for k, metric_fn in self.metrics_.items():
+                metrics[k] += metric_fn(recon_slice, output_slice)  # type: ignore
+
+        # Average loss and metrics across the temporal dimension
+        loss /= temporal_dim
+        metrics = {k: v / temporal_dim for k, v in metrics.items()}
+
+        return {
+            'loss': loss,
+            **metrics,
+        }
+
+    def log_metrics(
+        self,
+        losses: dict[str, torch.Tensor],
+        mode: ModelStages,
+    ) -> None:
+        metrics = {
+            f'{mode}_loss': losses['loss'],
+            **{f'{mode}_{k}': v.mean() for k, v in losses.items() if k != 'loss'},
+        }
+        self.log_dict(
+            metrics,
+            on_epoch=True,
+            prog_bar=True,
+            batch_size=self.batch_size_dict[mode],
+        )
+
+    def training_step(self, batch: dict, batch_idx: int) -> torch.Tensor:
+        losses = self.shared_step(batch)
+        self.log_metrics(losses, 'train')
+        return losses['loss']
+
+    def validation_step(self, batch: dict, batch_idx: int) -> None:
+        losses = self.shared_step(batch)
+        self.log_metrics(losses, 'valid')
+
+    def test_step(self, batch: dict, batch_idx: int) -> dict:
+        losses = self.shared_step(batch)
+        self.log_metrics(losses, 'test')
+        return losses
+
+    def configure_optimizers(self) -> torch.optim.Optimizer:  # type: ignore
+        optimizer = torch.optim.AdamW(self.parameters(), lr=self.lr)  # type: ignore
+        return optimizer
 
 
 class LSTMEncoder(Encoder):
