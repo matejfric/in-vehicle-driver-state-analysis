@@ -7,9 +7,7 @@ import torch.optim
 from torchmetrics.functional import mean_absolute_error, mean_squared_error
 
 from .ae.common import Decoder, Encoder
-from .common import BatchSizeDict
-
-Stages: TypeAlias = Literal['train', 'valid', 'test']
+from .common import BatchSizeDict, ModelStages
 
 
 class AutoencoderModel(L.LightningModule):
@@ -91,7 +89,7 @@ class AutoencoderModel(L.LightningModule):
     def log_metrics(
         self,
         losses: dict[str, torch.Tensor],
-        mode: Stages,
+        mode: ModelStages,
     ) -> None:
         metrics = {
             f'{mode}_loss': losses['loss'],

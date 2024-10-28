@@ -1,7 +1,10 @@
 from pathlib import Path
-from typing import TypedDict
+from typing import TypedDict, Literal, TypeAlias
 
 from PIL import Image
+
+
+ModelStages: TypeAlias = Literal['train', 'valid', 'test']
 
 
 class BatchSizeDict(TypedDict):
