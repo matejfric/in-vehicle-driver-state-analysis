@@ -15,6 +15,21 @@ def crop_driver_and_resize(image_path: Path, resize: tuple[int, int]) -> np.ndar
     return np.array(image_pil)
 
 
+def crop_mask_resize_driver(image_path: Path, resize: tuple[int, int]) -> np.ndarray:
+    """Assumes `masks` directory is in the same directory as the images."""
+    image_pil = Image.open(image_path)
+    image_pil = crop_driver_image_contains(image_pil, image_path)
+    image_pil = image_pil.resize(resize)
+
+    mask_path = image_path.parent.parent / 'masks' / image_path.with_suffix('.png').name
+    mask_pil = Image.open(mask_path).convert('L').resize(resize)
+
+    image = np.array(image_pil).astype(np.float32)
+    mask = (np.array(mask_pil) > 0).astype(np.float32)
+
+    return (image * mask).astype(np.uint8)
+
+
 class MemMapWriter:
     def __init__(
         self,
