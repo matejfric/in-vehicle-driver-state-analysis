@@ -73,8 +73,8 @@ class SegmentationModel(L.LightningModule):
         # F1-score also happens to be Sørensen–Dice coefficient
         return {
             'loss': loss,
-            'jaccard_index': tp / (tp + fp + fn),
-            'f1_score': 2 * tp / (2 * tp + fp + fn),
+            'jaccard_index': (tp).float() / (tp + fp + fn),
+            'f1_score': 2 * (tp).float() / (2 * tp + fp + fn),
             'tp': tp,
             'fp': fp,
             'fn': fn,
@@ -88,7 +88,11 @@ class SegmentationModel(L.LightningModule):
     ) -> None:
         metrics = {
             f'{mode}_loss': losses['loss'],
-            **{f'{mode}_{k}': v.mean() for k, v in losses.items() if k != 'loss'},
+            **{
+                f'{mode}_{k}': v.mean(dtype=torch.float)
+                for k, v in losses.items()
+                if k != 'loss'
+            },
         }
         self.log_dict(
             metrics,
