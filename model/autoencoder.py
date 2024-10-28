@@ -1,4 +1,4 @@
-from typing import Any, Literal, TypeAlias
+from typing import Any, Literal
 
 import pytorch_lightning as L
 import torch

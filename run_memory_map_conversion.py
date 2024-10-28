@@ -3,7 +3,6 @@ from sys import argv
 
 from model.memory_map import MemMapWriter, crop_mask_resize_driver
 
-
 if __name__ == '__main__':
     # /home/lanter/source/driver-dataset/2024-10-28-driver-all-frames/2021_08_31_geordi_enyaq/anomal/depth
     if len(argv) < 2:
