@@ -192,7 +192,7 @@ class TemporalAutoencoderDataset(Dataset):
         return DatasetItem(
             image=temporal_tensor,
             mask=temporal_tensor,
-            filename=idx,
+            filename=idx * self.window_size,
         )
 
 
