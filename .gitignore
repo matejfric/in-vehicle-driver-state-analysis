@@ -1,6 +1,7 @@
 .ipynb_checkpoints
 .venv
 .ruff_cache
+.pytest_cache
 __pycache__
 
 *.jpg
