@@ -272,6 +272,7 @@ def plot_temporal_autoencoder_reconstruction(
         raise ValueError('`random_shuffle` is only for `limit`.')
 
     model.eval()
+    device = model.device
     dataset = data_loader.dataset
     window_size = dataset.window_size
     n_cols = window_size
@@ -288,7 +289,8 @@ def plot_temporal_autoencoder_reconstruction(
     for row_idx, idx in enumerate(indices):  # type: ignore
         sequence = dataset[idx]['image']
         with torch.no_grad():
-            reconstruction = model(sequence.unsqueeze(0))[0]  # type: ignore
+            reconstruction = model(sequence.unsqueeze(0).to(device))[0]  # type: ignore
+        reconstruction = reconstruction.cpu()
 
         for t in range(sequence.shape[time_dim_index]):  # type: ignore
             if time_dim_index == 0:
