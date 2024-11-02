@@ -145,6 +145,7 @@ class TemporalAutoencoderDataset(Dataset):
         memory_map_file: Path | str,
         memory_map_image_shape: tuple[int, int] = (256, 256),
         window_size: int = 4,
+        time_dim_index: Literal[0, 1] = 0,
         transforms: albu.Compose | None = None,
         input_transforms: albu.Compose | None = None,
     ) -> None:
@@ -158,6 +159,9 @@ class TemporalAutoencoderDataset(Dataset):
             Shape of the images in `memory_map_file`.
         window_size : int, default=4
             Number of frames to include in each sample.
+        time_dim_index : Literal[0, 1], default=0
+            Index of the time dimension in the output tensor,
+            1 for (C, T, H, W) and 0 for (T, C, H, W).
         transforms : albu.Compose, default=None
             Compose object with albumentations transforms.
         input_transforms : albu.Compose, default=None
@@ -166,7 +170,8 @@ class TemporalAutoencoderDataset(Dataset):
         self.memory_map_file = memory_map_file
         self.memory_map = MemMapReader(memory_map_file, memory_map_image_shape)
         self.window_size = window_size
-        self.default_transform = T.ToTensor()
+        self.time_dim_index = time_dim_index
+        self.default_transform_ = T.ToTensor()
         self.transforms = transforms
         self.input_transforms = input_transforms
 
@@ -179,15 +184,17 @@ class TemporalAutoencoderDataset(Dataset):
         return len(self.memory_map) // self.window_size
 
     def __getitem__(self, idx: int) -> DatasetItem:
-        temporal_slice = self.memory_map.window(
+        # Memory map is read-only, so we need to get mutable copies of the numpy arrays.
+        temporal_slice = self.memory_map.window_mut(
             idx * self.window_size, self.window_size
         )
-        # Memory map is read-only, so we need to copy the images.
-        temporal_slice = [
-            self.default_transform(np.expand_dims(np.copy(image), 2))
-            for image in temporal_slice
-        ]
+        # list[(C, H, W)]
+        temporal_slice = [self.default_transform_(image) for image in temporal_slice]
+        # (T, C, H, W)
         temporal_tensor = torch.stack(temporal_slice)  # type: ignore
+        if self.time_dim_index == 1:
+            # (C, T, H, W)
+            temporal_tensor = temporal_tensor.permute(1, 0, 2, 3)
 
         return DatasetItem(
             image=temporal_tensor,

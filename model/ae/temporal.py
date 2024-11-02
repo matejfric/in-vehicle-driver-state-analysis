@@ -19,11 +19,15 @@ class TemporalAutoencoderModel(L.LightningModule):
         batch_size_dict: BatchSizeDict,
         learning_rate: float = 1e-4,
         loss_function: Literal['mae', 'mse'] = 'mse',
+        time_dim_index: Literal[1, 2] = 1,
         train_noise_std_input: float = 0.0,
         train_noise_std_latent: float = 0.0,
         **kwargs: dict[Any, Any],
     ) -> None:
         """Temporal autoencoder model.
+
+        Assumes that the input tensor has shape `(batch_size, temporal_dim, channels, height, width)` or
+        `(batch_size, channels, temporal_dim, height, width)` depending on the `time_dim_index`.
 
         Parameters
         ----------
@@ -35,6 +39,10 @@ class TemporalAutoencoderModel(L.LightningModule):
             Dictionary with batch sizes for `train`, `valid`, and `test` datasets.
         learning_rate : float, default=1e-4
         loss_function : {'fro', 'mse'}, default='mse'
+        time_dim_index : int, default=1
+            Index of the temporal dimension in the input tensor.
+            If `1`, the input tensor has shape `(batch_size, temporal_dim, channels, height, width)`.
+            If `2`, the input tensor has shape `(batch_size, channels, temporal_dim, height, width)`.
         train_noise_std_input: float, default=0.0
             Standard deviation of the Gaussian noise added to the input image.
         train_noise_std_latent: float, default=0.0
@@ -46,15 +54,14 @@ class TemporalAutoencoderModel(L.LightningModule):
 
         self.encoder = encoder
         self.decoder = decoder
-
         self.batch_size_dict = batch_size_dict
         self.lr = learning_rate
-
+        self.time_dim_index = time_dim_index
         self.train_noise_std_input = train_noise_std_input
         self.train_noise_std_latent = train_noise_std_latent
 
         loss_functions = {'mae': nn.SmoothL1Loss(), 'mse': nn.MSELoss()}
-        self.loss_function = loss_functions[loss_function]
+        self.loss_function_ = loss_functions[loss_function]
         self.metrics_ = dict(
             mae=mean_absolute_error,
             mse=mean_squared_error,
@@ -89,24 +96,28 @@ class TemporalAutoencoderModel(L.LightningModule):
 
         loss = 0
         metrics = {k: 0 for k in self.metrics_}
-        temporal_dim = images.shape[1]
+        n_time_steps = images.shape[self.time_dim_index]
 
-        for t in range(temporal_dim):
-            # The `contiguous` is not the most efficient, but torchmetrics are using
+        for t in range(n_time_steps):
+            # This select one slice of the tensor along the temporal dimension.
+            # The `slice(None)` is equivalent to `:` in numpy.
+            slice_index = (slice(None),) * self.time_dim_index + (t,)  # e.g.: `:, t`
+
+            # The `contiguous` call is not the most efficient, but `torchmetrics` are using
             # `view` internally in places where `reshape` should be used.
-            recon_slice = reconstructed[:, t].contiguous()
-            output_slice = outputs[:, t].contiguous()
+            recon_slice = reconstructed[slice_index].contiguous()
+            output_slice = outputs[slice_index].contiguous()
 
             # Accumulate loss for each temporal slice
-            loss += self.loss_function(recon_slice, output_slice)
+            loss += self.loss_function_(recon_slice, output_slice)
 
             # Accumulate metrics for each temporal slice
             for k, metric_fn in self.metrics_.items():
                 metrics[k] += metric_fn(recon_slice, output_slice)  # type: ignore
 
         # Average loss and metrics across the temporal dimension
-        loss /= temporal_dim
-        metrics = {k: v / temporal_dim for k, v in metrics.items()}
+        loss /= n_time_steps
+        metrics = {k: v / n_time_steps for k, v in metrics.items()}
 
         return {
             'loss': loss,
@@ -275,7 +286,7 @@ class LSTMDecoder(Decoder):
                 n_time_steps,
             ),
             # We expect normalized images as inputs, so we use either ReLU or sigmoid activation.
-            TimeDistributed(nn.ReLU(), n_time_steps),
+            TimeDistributed(nn.Sigmoid(), n_time_steps),
         )
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
