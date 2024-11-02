@@ -232,6 +232,87 @@ def plot_predictions_compact(
     plt.show()
 
 
+def plot_temporal_autoencoder_reconstruction(
+    model: LightningModule,
+    data_loader: DataLoader,
+    save_path: str | Path | None = None,
+    limit: int | None = None,
+    indices: list[int] | None = None,
+    random_shuffle: bool = False,
+) -> None:
+    """Plot predictions from a model on a dataset.
+
+    Parameters
+    ----------
+    model : LightningModule
+        PyTorch Lightning model.
+    data_loader : DataLoader
+        PyTorch DataLoader.
+    save_path : str | Path | None, default=None
+        Path to save the plot.
+    limit : int | None, default=None
+        Limit the number of sequences to plot.
+    indices : list[int] | None, default=None
+        List of indices to plot.
+    random_shuffle : bool, default=False
+        Shuffle the batches before plotting.
+    """
+    from .dataset import TemporalAutoencoderDataset
+
+    if not isinstance(data_loader.dataset, TemporalAutoencoderDataset):
+        raise ValueError('DataLoader must be using `TemporalAutoencoderDataset`')
+    if not limit and not indices:
+        raise ValueError('Either `limit` or `indices` must be provided.')
+    if limit and indices:
+        raise ValueError('Only one of `limit` or `indices` can be provided.')
+    if indices and random_shuffle:
+        raise ValueError('`random_shuffle` is only for `limit`.')
+
+    model.eval()
+    dataset = data_loader.dataset
+    window_size = dataset.window_size
+    n_cols = window_size
+    n_rows = 2 * (limit or len(indices))  # type: ignore (either limit or indices is provided)
+    fig, axes = plt.subplots(n_rows, n_cols, figsize=(n_cols * 4, n_rows * 4))
+
+    if limit:
+        indices = (
+            random.sample(range(len(data_loader.dataset)), limit)
+            if random_shuffle
+            else list(range(limit))
+        )
+
+    for row_idx, idx in enumerate(indices):  # type: ignore
+        sequence = dataset[idx]['image']
+        with torch.no_grad():
+            reconstruction = model(sequence.unsqueeze(0))[0]  # type: ignore
+
+        for t, (input_img, reconst_img) in enumerate(zip(sequence, reconstruction)):
+            input_img = input_img.numpy().squeeze()
+            reconst_img = reconst_img.numpy().squeeze()
+            mse = np.mean((input_img - reconst_img) ** 2)
+            fro_norm = np.linalg.norm(input_img - reconst_img, ord='fro')
+
+            # Plot original and reconstructed images
+            axes[2 * row_idx, t].imshow(input_img, cmap='gray')  # type: ignore
+            axes[2 * row_idx + 1, t].imshow(reconst_img, cmap='gray')  # type: ignore
+            axes[2 * row_idx + 1, t].text(  # type: ignore
+                # (0, 0) is lower-left and (1, 1) is upper-right
+                0.95,
+                0.95,
+                f'MSE={mse:.3f}\nFRO={fro_norm:.3f}',
+                bbox={'boxstyle': 'round', 'facecolor': 'white', 'pad': 0.5},
+                ha='right',
+                va='top',
+                transform=axes[2 * row_idx + 1, t].transAxes,  # type: ignore
+            )
+
+    plt.tight_layout()
+    if save_path:
+        plt.savefig(save_path)
+    plt.show()
+
+
 def plot_autoencoder_reconstruction(
     model: LightningModule,
     data_loader: DataLoader,
