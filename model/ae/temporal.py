@@ -17,9 +17,10 @@ class TemporalAutoencoderModel(L.LightningModule):
         encoder: Encoder,
         decoder: Decoder,
         batch_size_dict: BatchSizeDict,
-        learning_rate: float = 1e-4,
+        learning_rate: float = 0.0005,  # 5e-4 (Adam default is 1e-3)
         loss_function: Literal['mae', 'mse'] = 'mse',
         time_dim_index: Literal[1, 2] = 1,
+        eps: float = 1e-07,  # Adam default is 1e-8
         train_noise_std_input: float = 0.0,
         train_noise_std_latent: float = 0.0,
         **kwargs: dict[Any, Any],
@@ -56,6 +57,7 @@ class TemporalAutoencoderModel(L.LightningModule):
         self.decoder = decoder
         self.batch_size_dict = batch_size_dict
         self.lr = learning_rate
+        self.eps = eps
         self.time_dim_index = time_dim_index
         self.train_noise_std_input = train_noise_std_input
         self.train_noise_std_latent = train_noise_std_latent
@@ -155,7 +157,7 @@ class TemporalAutoencoderModel(L.LightningModule):
         return losses
 
     def configure_optimizers(self) -> torch.optim.Optimizer:  # type: ignore
-        optimizer = torch.optim.AdamW(self.parameters(), lr=self.lr)  # type: ignore
+        optimizer = torch.optim.Adam(self.parameters(), lr=self.lr, eps=self.eps)  # type: ignore
         return optimizer
 
 
@@ -192,21 +194,29 @@ class LSTMEncoder(Encoder):
             ),
             TimeDistributed(nn.ReLU(), n_time_steps),
             TimeDistributed(nn.MaxPool2d(2), n_time_steps),
-        )
-        self.time_fc = nn.Sequential(
-            TimeDistributed(nn.LazyLinear(n_fc_neurons), n_time_steps),
+            TimeDistributed(
+                nn.LazyConv2d(2 * n_filters, kernel_size=3, padding=1),
+                n_time_steps,
+            ),
             TimeDistributed(nn.ReLU(), n_time_steps),
+            TimeDistributed(nn.MaxPool2d(2), n_time_steps),
         )
-        # Output shape of LSTM is `(batch_size, n_time_steps, 2 * n_fc_neurons)` (2 for bidirectional)
+
+        self.time_fc = TimeDistributed(nn.LazyLinear(n_fc_neurons), n_time_steps)
+        self.time_fc_relu = TimeDistributed(nn.ReLU(), n_time_steps)
+
         self.lstm = nn.LSTM(
+            # When `batch_first=True`, the input shape is `(batch_size, n_time_steps, input_features)`,
+            # and the `input_size` of the LSTM is expected to be `input_features`
+            # (NOT multiplied by `n_time_steps`).
             n_fc_neurons,
             n_lstm_neurons,
-            n_time_steps,
             batch_first=True,
             bidirectional=bidirectional,
+            # Activation functions are applied in the LSTM cell (see LSTM design).
+            # Output shape, when bidirectional=True is `(2, batch_size, n_lstm_neurons)`.
         )
-        self.lstm_relu = nn.ReLU()
-        bottleneck_input = n_time_steps * n_image_channels * n_lstm_neurons
+        bottleneck_input = n_lstm_neurons
         if bidirectional:
             bottleneck_input *= 2
         self.fc_latent = nn.Linear(bottleneck_input, latent_dim)
@@ -219,13 +229,14 @@ class LSTMEncoder(Encoder):
         x = x.view(batch_size, time_steps, -1)
 
         x = self.time_fc(x)
+        x = self.time_fc_relu(x)
 
-        # The second element contains LSTM cell's memory and hidden states
-        x = self.lstm(x)[0]
-        x = self.lstm_relu(x)
+        # `last_timestamp` shape is `(batch_size, 1, 2 * n_fc_neurons)` (2 for bidirectional)
+        # _whole_seq, (last_timestamp, _cell_state) = self.lstm(x)
+        _, (x, _) = self.lstm(x)
+        # x = self.lstm_relu(last_timestamp)
 
-        # Flatten the time dimension.
-        # The output shape is `(batch_size, n_time_steps * n_lstm_neurons)`.
+        x = x.permute(1, 0, 2)
         x = x.reshape(batch_size, x.shape[1:].numel())
         x = self.fc_latent(x)
         return x
@@ -254,17 +265,14 @@ class LSTMDecoder(Decoder):
         self.lstm = nn.LSTM(
             latent_dim,
             n_lstm_neurons,
-            n_time_steps,
             batch_first=True,
             bidirectional=bidirectional,
         )
-        self.lstm_relu = nn.ReLU()
         self.time_fc = nn.Sequential(
             TimeDistributed(
                 nn.LazyLinear(n_image_channels * image_size * image_size // 16),
                 n_time_steps,
             ),
-            TimeDistributed(nn.ReLU(), n_time_steps),
         )
         self.conv_layers = nn.Sequential(
             TimeDistributed(
@@ -273,20 +281,16 @@ class LSTMDecoder(Decoder):
                 ),
                 n_time_steps,
             ),
-            TimeDistributed(nn.ReLU(), n_time_steps),
             TimeDistributed(
                 nn.LazyConvTranspose2d(
                     n_filters, kernel_size=5, padding=2, stride=2, output_padding=1
                 ),
                 n_time_steps,
             ),
-            TimeDistributed(nn.ReLU(), n_time_steps),
             TimeDistributed(
                 nn.LazyConvTranspose2d(n_image_channels, kernel_size=5, padding=2),
                 n_time_steps,
             ),
-            # We expect normalized images as inputs, so we use either ReLU or sigmoid activation.
-            TimeDistributed(nn.Sigmoid(), n_time_steps),
         )
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
@@ -294,8 +298,7 @@ class LSTMDecoder(Decoder):
         # The output shape is `(batch_size, n_time_steps, latent_dim)`.
         x = x.unsqueeze(1).repeat(1, self.n_time_steps, 1)
 
-        x = self.lstm(x)[0]
-        x = self.lstm_relu(x)
+        x = self.lstm(x)[0]  # (batch_size, n_time_steps, n_lstm_neurons)
         x = self.time_fc(x)
 
         x = x.view(

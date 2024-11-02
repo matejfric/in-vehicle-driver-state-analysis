@@ -501,6 +501,7 @@ def plot_roc_chart(
     save_path: str | Path | None = None,
     figsize: tuple[int, int] = (7, 7),
     cmap: str = 'rainbow',
+    cbar_text: str = 'Thresholds',
 ) -> tuple[float, float]:
     """Plot ROC curve with optimal threshold.
 
@@ -536,7 +537,7 @@ def plot_roc_chart(
     optimal_idx = j_scores.argmax()
     optimal_threshold = thresholds[optimal_idx]
 
-    plt.plot(fpr, tpr, c='black', label=f'AUC={roc_auc:.2f}')
+    plt.plot(fpr, tpr, c='black', label=f'AUC={roc_auc:.3f}')
     scatter = plt.scatter(fpr, tpr, c=thresholds, cmap=cmap)
 
     # Random predictions curve:
@@ -556,10 +557,10 @@ def plot_roc_chart(
         fpr[optimal_idx] + 0.01,
         (fpr[optimal_idx] + tpr[optimal_idx]) / 2,
         f'J={optimal_threshold:.2f}',
-        fontsize=11,
+        fontsize=12,
     )
     cbar = plt.colorbar(scatter, shrink=0.7)
-    cbar.set_label('Thresholds')
+    cbar.set_label(cbar_text)
     plt.title('ROC Chart')
     plt.xlim([0, 1])
     plt.ylim([0, 1])
