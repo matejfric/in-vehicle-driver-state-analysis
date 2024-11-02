@@ -49,11 +49,23 @@ def summarize_model(
     ----------
     tablefmt: str, default='simple'
         The table format, e.g. 'plain', 'simple', 'grid', 'pipe', 'orgtbl', 'jira', 'presto', 'pretty', 'html', 'latex', 'mediawiki', 'moinmoin', 'rst', 'tsv', 'textile'.
+    use_separating_line: bool, default=True
+        Whether to use a separating line between the module summary and the total number of parameters. This is not supported in all table formats.
 
     Returns
     -------
     str
         The model summary as a formatted string.
+
+    Examples
+    --------
+    >>> print(summarize_model(encoder))
+    >>>
+    >>> # Concatenate multiple modules
+    >>> print(summarize_model([encoder, decoder]))
+    >>>
+    >>> # Use any `tabulate` formatter (see `tablefmt` parameter in `tabulate` package).
+    >>> print(summarize_model(encoder, tablefmt='latex_booktabs', use_separating_line=False))
     """
     from tabulate import SEPARATING_LINE, tabulate
 
