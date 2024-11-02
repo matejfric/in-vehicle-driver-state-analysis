@@ -131,7 +131,15 @@ class MemMapReader:
         return f'MemMap with {len(self):,} images:\n- File: {self.memmap_file}\n- Shape: {self.shape}'
 
     def window(self, start: int, window_size: int) -> list[np.ndarray]:
+        """Return a list of read-only images."""
         return [self[i] for i in range(start, min(start + window_size, self.n_images))]
+
+    def window_mut(self, start: int, window_size: int) -> list[np.ndarray]:
+        """Return a list of mutable images."""
+        return [
+            np.copy(self[i])
+            for i in range(start, min(start + window_size, self.n_images))
+        ]
 
     def iter_windows(self, window_size: int) -> Generator[list[np.ndarray], None, None]:
         """Iterate over the memory-mapped images in windows of a given size."""
