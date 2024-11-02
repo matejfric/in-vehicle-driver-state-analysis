@@ -43,17 +43,17 @@ def summarize_model(
     tablefmt: str = 'simple',
     use_separating_line: bool = True,
 ) -> str:
-    """Get model summary.
+    """Get model summary with tabulate.
 
     Parameters
     ----------
     tablefmt: str, default='simple'
         The table format, e.g. 'plain', 'simple', 'grid', 'pipe', 'orgtbl', 'jira', 'presto', 'pretty', 'html', 'latex', 'mediawiki', 'moinmoin', 'rst', 'tsv', 'textile'.
 
-    Examples
-    --------
-    >>> print(summarize_model(encoder))
-    >>> print(summarize_model(encoder, tablefmt='latex_booktabs', use_separating_line=False))
+    Returns
+    -------
+    str
+        The model summary as a formatted string.
     """
     from tabulate import SEPARATING_LINE, tabulate
 
@@ -69,75 +69,70 @@ def summarize_model(
         parameters = str_module[left + 1 : right]
         return parameters.replace('in_features=', '').replace('out_features=', '')
 
-    table_data = []
-    for module in modules if isinstance(modules, list) else [modules]:
-        for submodule in module.children():
-            # Iterate over the submodules in the Sequential container
-            children = list(submodule.children())
-            if len(children) == 0:
-                if (n_params := get_module_params(submodule)) > 0:
-                    table_data.append(
+    def collect_module_summary(module: torch.nn.Module, name_prefix: str = '') -> list:
+        """Recursively collect summary information for each module."""
+        summary = []
+
+        for sub_module in module.children():
+            module_name = module.__class__.__name__
+            # Ignore `Sequential` and `TimeDistributed`, directly collect its children.
+            if (
+                isinstance(sub_module, torch.nn.Sequential)
+                or sub_module.__class__.__name__ == 'TimeDistributed'
+            ):
+                # Recurse
+                summary.extend(collect_module_summary(sub_module, name_prefix))
+                continue
+
+            if isinstance(sub_module, torch.nn.modules.container.ModuleList):
+                # If this is a `ModuleList`, iterate over the submodules.
+                # Example output: "TimeDistributed 4x Conv2d"
+                for sub_sub_module in sub_module.children():
+                    n_params = get_module_params(sub_sub_module)
+                    summary.append(
                         [
-                            submodule.__class__.__name__,
-                            get_module_hyperparameters(submodule),
+                            f'{module_name} {len(sub_module)}x {sub_sub_module.__class__.__name__}',
+                            get_module_hyperparameters(sub_sub_module),
                             n_params,
                         ]
+                    )
+            else:
+                # Regular submodule
+
+                if list(sub_module.children()):
+                    # Recurse if submodule has children
+                    summary.extend(
+                        collect_module_summary(
+                            sub_module,
+                            name_prefix=name_prefix,
+                        )
                     )
                 else:
-                    table_data.append(
+                    # Example output: "Conv2d"
+                    summary.append(
                         [
-                            submodule.__class__.__name__,
-                            get_module_hyperparameters(submodule),
-                            n_params,
+                            sub_module.__class__.__name__,
+                            get_module_hyperparameters(sub_module),
+                            get_module_params(sub_module),
                         ]
                     )
-            for subsubmodule in children:
-                subname = subsubmodule.__class__.__name__
-                for subsubsubmodule in subsubmodule.children():
-                    if isinstance(
-                        subsubsubmodule, torch.nn.modules.container.ModuleList
-                    ):
-                        # If this is a ModuleList, iterate over the submodules
-                        for subsubsubsubmodule in subsubsubmodule.children():
-                            if (n_params := get_module_params(subsubsubsubmodule)) > 0:
-                                table_data.append(
-                                    [
-                                        f'{subname} {len(subsubsubmodule)}x {subsubsubsubmodule.__class__.__name__}',
-                                        get_module_hyperparameters(subsubsubsubmodule),
-                                        n_params,
-                                    ]
-                                )
-                            else:
-                                table_data.append(
-                                    [
-                                        f'{subname} {len(subsubsubmodule)}x {subsubsubsubmodule.__class__.__name__}',
-                                        get_module_hyperparameters(subsubsubsubmodule),
-                                        n_params,
-                                    ]
-                                )
-                    else:
-                        if (n_params := get_module_params(subsubsubmodule)) > 0:
-                            table_data.append(
-                                [
-                                    subname,
-                                    get_module_hyperparameters(subsubsubmodule),
-                                    n_params,
-                                ]
-                            )
-                        else:
-                            table_data.append(
-                                [
-                                    subname,
-                                    get_module_hyperparameters(subsubsubmodule),
-                                    n_params,
-                                ]
-                            )
 
-    total_params = sum([x[2] for x in table_data])
+        return summary
+
+    # Initialize table data
+    table_data = []
+    modules = modules if isinstance(modules, list) else [modules]
+    for module in modules:
+        # Recursively traverse modules and collect summary information.
+        table_data.extend(collect_module_summary(module))
+
+    # Calculate total parameters and add to table
+    total_params = sum([row[2] for row in table_data])
     if use_separating_line:
         table_data.append(SEPARATING_LINE)
     table_data.append(['', '', total_params])
 
+    # Format the table with tabulate
     table = tabulate(table_data, headers=header, intfmt=intfmt, tablefmt=tablefmt)
 
     return table
