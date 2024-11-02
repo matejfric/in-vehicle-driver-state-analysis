@@ -57,7 +57,6 @@ class MemMapWriter:
             Path(output_file) if isinstance(output_file, str) else output_file
         )
         self.dtype = dtype
-        self._in_context = False  # Track if in context manager
         self.memmap_array = ...
 
     def __call__(self) -> Generator[np.ndarray, None, None]:
@@ -69,10 +68,10 @@ class MemMapWriter:
         """Returns the number of images."""
         return len(self.image_paths)
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return f'MemMap with {len(self):,} images:\n- Output file: {self.output_file}\n- Resize: {self.resize}\n- dtype: {self.dtype.__name__}\n- func: {self.func.__name__}'
 
-    def write(self):
+    def write(self) -> None:
         """Process images with `func` and write them to the memory-mapped file."""
 
         if self.output_file.exists():
@@ -114,7 +113,7 @@ class MemMapReader:
         self.n_images = int(memmap_bytes // np.prod(shape))
 
         if not self.n_images * np.prod(shape) == memmap_bytes:
-            raise ValueError(f'Shape `{shape}` is invalid.')
+            raise ValueError(f'{__class__.__name__}: Shape `{shape}` is invalid.')
 
         self.memmap = np.memmap(memmap_file, mode='r', shape=(self.n_images, *shape))
 
@@ -124,17 +123,17 @@ class MemMapReader:
     def __getitem__(self, index: int) -> np.ndarray:
         return self.memmap[index]
 
-    def __iter__(self):
+    def __iter__(self) -> Generator[np.ndarray, None, None]:
         for i in range(self.n_images):
             yield self.memmap[i]
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return f'MemMap with {len(self):,} images:\n- File: {self.memmap_file}\n- Shape: {self.shape}'
 
     def window(self, start: int, window_size: int) -> list[np.ndarray]:
         return [self[i] for i in range(start, min(start + window_size, self.n_images))]
 
-    def iter_windows(self, window_size: int):
+    def iter_windows(self, window_size: int) -> Generator[list[np.ndarray], None, None]:
         """Iterate over the memory-mapped images in windows of a given size."""
         for start in range(0, self.n_images):
             yield self.window(start, window_size)
