@@ -1,23 +1,52 @@
+import argparse
 from pathlib import Path
-from sys import argv
 
 from model.memory_map import MemMapWriter, crop_mask_resize_driver
 
-if __name__ == '__main__':
-    # /home/lanter/source/driver-dataset/2024-10-28-driver-all-frames/2021_08_31_geordi_enyaq/anomal/depth
-    if len(argv) < 2:
-        raise ValueError(
-            'Please provide the image directory as an argument. Example: `data/`.'
-        )
 
-    image_dir = Path(argv[1])
-    output_file = argv[2] if len(argv) == 3 else image_dir / 'mem_map.dat'
+def main(args: argparse.Namespace) -> None:
+    image_dir = Path(args.path)
+    resize = args.resize
+    output_file = (
+        args.output
+        if args.output
+        else image_dir.parent / 'memory_maps' / f'depth_{resize}.dat'
+    )
 
-    image_paths = list(Path(image_dir).glob('*.png'))
+    # Gather all image paths in the specified directory
+    image_paths = list(image_dir.glob(f'*.{args.extension}'))
     if not image_paths:
         raise ValueError(f'No images found in {image_dir}.')
 
     # Write the memory-mapped file
-    mm_writer = MemMapWriter(image_paths, output_file, crop_mask_resize_driver)
+    mm_writer = MemMapWriter(
+        image_paths, output_file, crop_mask_resize_driver, resize=(resize, resize)
+    )
     mm_writer.write()
     print(mm_writer)
+
+
+if __name__ == '__main__':
+    # Example usage:
+    # conda activate torch
+    # $CONDA_PREFIX/bin/python3 run_memory_map_conversion.py --path "/home/lanter/source/driver-dataset/2024-10-28-driver-all-frames/2021_08_31_geordi_enyaq/normal/depth" --resize 224
+    parser = argparse.ArgumentParser(
+        description='Process images into a memory-mapped file.',
+        usage='python3 run_memory_map_conversion.py --path <path> [--output <output>] [--resize <resize>] [--extension <extension>]',
+    )
+    parser.add_argument(
+        '--path', required=True, help='Path to the directory containing images.'
+    )
+    parser.add_argument('--output', help='Path to save the output memory-mapped file.')
+    parser.add_argument(
+        '--resize', type=int, default=256, help='Size to resize images (default: 256).'
+    )
+    parser.add_argument(
+        '--extension',
+        type=str,
+        default='png',
+        help='File extension to filter images (default: png).',
+    )
+
+    args = parser.parse_args()
+    main(args)
