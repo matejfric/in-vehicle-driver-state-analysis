@@ -1,5 +1,6 @@
 import random
 from pathlib import Path
+from typing import Literal
 
 import albumentations as albu
 import matplotlib.pyplot as plt
@@ -240,6 +241,7 @@ def plot_temporal_autoencoder_reconstruction(
     limit: int | None = None,
     indices: list[int] | None = None,
     random_shuffle: bool = False,
+    time_dim_index: Literal[0, 1] = 0,
 ) -> None:
     """Plot predictions from a model on a dataset.
 
@@ -288,9 +290,14 @@ def plot_temporal_autoencoder_reconstruction(
         with torch.no_grad():
             reconstruction = model(sequence.unsqueeze(0))[0]  # type: ignore
 
-        for t, (input_img, reconst_img) in enumerate(zip(sequence, reconstruction)):
-            input_img = input_img.numpy().squeeze()
-            reconst_img = reconst_img.numpy().squeeze()
+        for t in range(sequence.shape[time_dim_index]):  # type: ignore
+            if time_dim_index == 0:
+                input_img = sequence[t].numpy().squeeze()
+                reconst_img = reconstruction[t].numpy().squeeze()
+            else:
+                input_img = sequence[:, t].numpy().squeeze()  # type: ignore
+                reconst_img = reconstruction[:, t].numpy().squeeze()
+
             mse = np.mean((input_img - reconst_img) ** 2)
             fro_norm = np.linalg.norm(input_img - reconst_img, ord='fro')
 
