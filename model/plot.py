@@ -8,6 +8,7 @@ import pandas as pd
 import torch
 from PIL import Image
 from pytorch_lightning import LightningModule
+from sklearn.metrics import auc, roc_curve
 from torch.utils.data import DataLoader
 
 from .common import crop_driver_image
@@ -485,3 +486,83 @@ def plot_learning_curves(
         plt.savefig(save_path)
 
     plt.show()
+
+
+def plot_roc_chart(
+    y_true: np.ndarray | list[int],
+    y_pred_proba: np.ndarray | list[float],
+    save_path: str | Path | None = None,
+    figsize: tuple[int, int] = (7, 7),
+    cmap: str = 'rainbow',
+) -> tuple[float, float]:
+    """Plot ROC curve with optimal threshold.
+
+    Parameters
+    ----------
+    y_true : np.ndarray
+        True binary labels.
+    y_pred_proba : np.ndarray
+        Predicted probabilities.
+    figsize : tuple, default=(7, 7)
+        Figure size.
+    cmap : str, default='rainbow'
+        Colormap for the thresholds. One of `matplotlib.pyplot.colormaps()`.
+
+    Returns
+    -------
+    roc_auc : float
+        Area under the ROC curve.
+    optimal_threshold : float
+        Optimal threshold based on Youden's J statistic.
+
+    Note
+    ----
+    Inspired by Peter Barrett Bryan: "You deserve a better ROC curve"
+    https://towardsdatascience.com/you-deserve-a-better-roc-curve-970617528ce8
+    """
+
+    plt.figure(figsize=figsize)
+
+    fpr, tpr, thresholds = roc_curve(y_true[: len(y_pred_proba)], y_pred_proba)
+    roc_auc = auc(fpr, tpr)
+    j_scores = tpr - fpr
+    optimal_idx = j_scores.argmax()
+    optimal_threshold = thresholds[optimal_idx]
+
+    plt.plot(fpr, tpr, c='black', label=f'AUC={roc_auc:.2f}')
+    scatter = plt.scatter(fpr, tpr, c=thresholds, cmap=cmap)
+
+    # Random predictions curve:
+    plt.plot([0, 1], [0, 1], 'k--', alpha=0.5)
+
+    # Maximum value of Youden's index for the ROC curve (optimal threshold):
+    # https://en.wikipedia.org/wiki/Youden%27s_J_statistic
+    # https://doi.org/10.1002/1097-0142(1950)3:1%3C32::AID-CNCR2820030106%3E3.0.CO;2-3
+    plt.plot(
+        [fpr[optimal_idx], fpr[optimal_idx]],
+        [fpr[optimal_idx], tpr[optimal_idx]],
+        'k',
+        linestyle='solid',
+        # label=f'J={optimal_threshold:.2f}',
+    )
+    plt.text(
+        fpr[optimal_idx] + 0.01,
+        (fpr[optimal_idx] + tpr[optimal_idx]) / 2,
+        f'J={optimal_threshold:.2f}',
+        fontsize=11,
+    )
+    cbar = plt.colorbar(scatter, shrink=0.7)
+    cbar.set_label('Thresholds')
+    plt.title('ROC Chart')
+    plt.xlim([0, 1])
+    plt.ylim([0, 1])
+    plt.axis('square')
+    plt.xlabel('False positive rate')
+    plt.ylabel('True positive rate')
+    plt.legend(loc='lower right')
+    plt.tight_layout()
+    if save_path:
+        plt.savefig(save_path)
+    plt.show()
+
+    return roc_auc, optimal_threshold  # type: ignore
