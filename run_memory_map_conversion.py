@@ -1,7 +1,7 @@
 import argparse
 from pathlib import Path
 
-from model.memory_map import MemMapWriter, crop_mask_resize_driver
+from model.memory_map import MemMapWriter, crop_mask_resize_driver, crop_resize_driver
 
 
 def main(args: argparse.Namespace) -> None:
@@ -10,7 +10,7 @@ def main(args: argparse.Namespace) -> None:
     output_file = (
         args.output
         if args.output
-        else image_dir.parent / 'memory_maps' / f'depth_{resize}.dat'
+        else image_dir.parent / 'memory_maps' / f'{image_dir.name}_{resize}.dat'
     )
 
     # Gather all image paths in the specified directory
@@ -19,9 +19,13 @@ def main(args: argparse.Namespace) -> None:
         raise ValueError(f'No images found in {image_dir}.')
 
     # Write the memory-mapped file
-    mm_writer = MemMapWriter(
-        image_paths, output_file, crop_mask_resize_driver, resize=(resize, resize)
-    )
+    if args.mask:
+        func = crop_mask_resize_driver
+    else:
+        func = crop_resize_driver
+        output_file = str(output_file).replace('.dat', '_no_mask.dat')
+
+    mm_writer = MemMapWriter(image_paths, output_file, func, resize=(resize, resize))
     mm_writer.write()
     print(mm_writer)
 
@@ -46,6 +50,11 @@ if __name__ == '__main__':
         type=str,
         default='png',
         help='File extension to filter images (default: png).',
+    )
+    parser.add_argument(
+        '--mask',
+        action='store_true',
+        help='Mask everything except the driver (default: False).',
     )
 
     args = parser.parse_args()
