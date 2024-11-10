@@ -218,7 +218,7 @@ class TemporalAutoencoderDataset(Dataset):
     def __getitem__(self, idx: int) -> DatasetItem:
         # Memory map is read-only by default, we need mutable copies of the numpy arrays.
         temporal_slice = self.memory_map.window_mut(
-            idx * self.window_size, self.window_size, self.time_step
+            idx, self.window_size, self.time_step
         )
         # list[(C, H, W)]
         temporal_slice = [self.default_transform_(image) for image in temporal_slice]
@@ -231,7 +231,7 @@ class TemporalAutoencoderDataset(Dataset):
         return DatasetItem(
             image=temporal_tensor,
             mask=temporal_tensor,
-            filename=idx * self.window_size,
+            filename=idx,
         )
 
 
