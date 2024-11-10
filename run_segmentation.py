@@ -1,6 +1,7 @@
 # %%
-from pathlib import Path
 from datetime import datetime
+from pathlib import Path
+from pprint import pprint
 
 import papermill as pm
 
@@ -15,7 +16,7 @@ all_dirs: list[Path] = [
 ]
 job_root = Path('jobs/segmentation')
 
-print(all_dirs)
+pprint(all_dirs)
 
 # %%
 
@@ -38,3 +39,5 @@ for dir in all_dirs:
             input_dir=str(dir / 'images'),
         ),
     )
+
+# %%
