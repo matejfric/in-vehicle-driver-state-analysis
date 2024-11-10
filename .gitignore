@@ -3,7 +3,7 @@
 .ruff_cache
 .pytest_cache
 .hypothesis
-__pycache__
+__pycache__/
 
 *.jpg
 *.png
@@ -12,3 +12,4 @@ __pycache__
 *.zip
 
 logs/
+jobs/

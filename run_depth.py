@@ -1,6 +1,6 @@
 # %%
-from pathlib import Path
 from datetime import datetime
+from pathlib import Path
 from pprint import pprint
 
 import papermill as pm
@@ -37,6 +37,7 @@ for dir in all_dirs:
         f'{str(job_dir)}.ipynb',
         parameters=dict(
             input_dir=str(dir / 'images'),
-            output_dir=str(job_dir),
         ),
     )
+
+# %%
