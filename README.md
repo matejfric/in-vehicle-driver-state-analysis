@@ -1,7 +1,7 @@
-# Corrosion
+# Driver State Analysis
 
-Quick start:
+## Installation
 
-```shell
-just notebook
+```bash
+conda env create -f environment.yml -n driver-state-analysis
 ```
