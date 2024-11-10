@@ -139,12 +139,25 @@ class AnomalyDataset(Dataset):
         )
 
 
+def get_last_window_index(
+    collection_length: int, window_size: int, time_step: int = 1
+) -> int:
+    """Return the start index of the last window. See `tests/test_dataset.py` for examples."""
+    if window_size * time_step > collection_length:
+        raise ValueError(
+            f'Combination of window size {window_size} and time step {time_step} exceeds collection length.'
+        )
+    last_index = collection_length - (window_size - 1) * time_step - 1
+    return max(last_index, 0)
+
+
 class TemporalAutoencoderDataset(Dataset):
     def __init__(
         self,
         memory_map_file: Path | str,
         memory_map_image_shape: tuple[int, int] = (256, 256),
         window_size: int = 4,
+        time_step: int = 1,
         time_dim_index: Literal[0, 1] = 0,
         transforms: albu.Compose | None = None,
         input_transforms: albu.Compose | None = None,
@@ -158,7 +171,9 @@ class TemporalAutoencoderDataset(Dataset):
         memory_map_image_shape : tuple[int, int], default=(256, 256)
             Shape of the images in `memory_map_file`.
         window_size : int, default=4
-            Number of frames to include in each sample.
+            Number of frames to include in each sample (sequence lenght).
+        time_step : int, default=1
+            Number of frames to skip between samples.
         time_dim_index : Literal[0, 1], default=0
             Index of the time dimension in the output tensor,
             1 for (C, T, H, W) and 0 for (T, C, H, W).
@@ -166,27 +181,44 @@ class TemporalAutoencoderDataset(Dataset):
             Compose object with albumentations transforms.
         input_transforms : albu.Compose, default=None
             Compose object with albumentations transforms to apply to the input image only.
+
+        Note
+        ----
+        Window size and time step:
+
+        ```
+        window_size = 2
+        time_step = 2
+
+        Input 0 1 2 3 4 5 6 7 8 9
+        Seq0  x   x
+        Seq1    x   x
+        Seq2      x   x
+        Seq3        x   x
+        ```
         """
         self.memory_map_file = memory_map_file
         self.memory_map = MemMapReader(memory_map_file, memory_map_image_shape)
         self.window_size = window_size
+        self.time_step = time_step
         self.time_dim_index = time_dim_index
         self.default_transform_ = T.ToTensor()
         self.transforms = transforms
         self.input_transforms = input_transforms
 
+        # Number of temporal slices in the dataset.
+        self.length_ = get_last_window_index(
+            len(self.memory_map), window_size, time_step
+        )
+
     def __len__(self) -> int:
-        """
-        Number of temporal slices in the dataset.
-        If the number of images is not divisible by the window size,
-        the last samples will be discarded.
-        """
-        return len(self.memory_map) // self.window_size
+        """Number of temporal slices in the dataset (samples)."""
+        return self.length_
 
     def __getitem__(self, idx: int) -> DatasetItem:
-        # Memory map is read-only, so we need to get mutable copies of the numpy arrays.
+        # Memory map is read-only by default, we need mutable copies of the numpy arrays.
         temporal_slice = self.memory_map.window_mut(
-            idx * self.window_size, self.window_size
+            idx * self.window_size, self.window_size, self.time_step
         )
         # list[(C, H, W)]
         temporal_slice = [self.default_transform_(image) for image in temporal_slice]

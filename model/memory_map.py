@@ -118,30 +118,44 @@ class MemMapReader:
         self.memmap = np.memmap(memmap_file, mode='r', shape=(self.n_images, *shape))
 
     def __len__(self) -> int:
+        """Returns the number of images in the memory-mapped file."""
         return self.n_images
 
     def __getitem__(self, index: int) -> np.ndarray:
         return self.memmap[index]
 
     def __iter__(self) -> Generator[np.ndarray, None, None]:
+        """Iterate over the memory-mapped images."""
         for i in range(self.n_images):
             yield self.memmap[i]
 
     def __repr__(self) -> str:
         return f'MemMap with {len(self):,} images:\n- File: {self.memmap_file}\n- Shape: {self.shape}'
 
-    def window(self, start: int, window_size: int) -> list[np.ndarray]:
-        """Return a list of read-only images."""
-        return [self[i] for i in range(start, min(start + window_size, self.n_images))]
+    def window(
+        self, start: int, window_size: int, time_step: int = 1
+    ) -> list[np.ndarray]:
+        """Return a list of `window_size` read-only images taking every `time_step`-th image. For `time_step=1` this returns consecutive images."""
+        end = min(start + window_size * time_step, self.n_images)
+        return [self[i] for i in range(start, end, time_step)]
 
-    def window_mut(self, start: int, window_size: int) -> list[np.ndarray]:
-        """Return a list of mutable images."""
-        return [
-            np.copy(self[i])
-            for i in range(start, min(start + window_size, self.n_images))
-        ]
+    def window_mut(
+        self, start: int, window_size: int, time_step: int = 1
+    ) -> list[np.ndarray]:
+        """Return a list of `window_size` mutable images taking every `time_step`-th image. For `time_step=1` this returns consecutive images."""
+        end = min(start + window_size * time_step, self.n_images)
+        return [np.copy(self[i]) for i in range(start, end, time_step)]
 
-    def iter_windows(self, window_size: int) -> Generator[list[np.ndarray], None, None]:
-        """Iterate over the memory-mapped images in windows of a given size."""
+    def iter_windows(
+        self, window_size: int, time_step: int = 1
+    ) -> Generator[list[np.ndarray], None, None]:
+        """Iterate over the memory-mapped images in windows of a given size. Yields a list of `window_size` read-only images."""
         for start in range(0, self.n_images):
-            yield self.window(start, window_size)
+            yield self.window(start, window_size, time_step)
+
+    def iter_windows_mut(
+        self, window_size: int, time_step: int = 1
+    ) -> Generator[list[np.ndarray], None, None]:
+        """Iterate over the memory-mapped images in windows of a given size. Yields a list of `window_size` read-only images."""
+        for start in range(0, self.n_images):
+            yield self.window_mut(start, window_size, time_step)
