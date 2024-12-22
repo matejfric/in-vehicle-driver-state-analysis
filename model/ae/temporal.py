@@ -161,6 +161,9 @@ class TemporalAutoencoderModel(L.LightningModule):
         return optimizer
 
 
+# region LSTM AE
+
+
 class LSTMEncoder(Encoder):
     def __init__(
         self,
@@ -320,3 +323,6 @@ class LSTMDecoder(Decoder):
         )
 
         return x
+
+
+# endregion
