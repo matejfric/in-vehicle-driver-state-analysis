@@ -343,6 +343,7 @@ dependencies:
       - backoff==2.2.1
       - boto3==1.35.44
       - botocore==1.35.44
+      - clip==1.0
       - dacite==1.6.0
       - dagshub==0.3.39
       - dagshub-annotation-converter==0.1.1
@@ -350,6 +351,7 @@ dependencies:
       - efficientnet-pytorch==0.7.1
       - fastjsonschema==2.20.0
       - ffmpeg-python==0.2.0
+      - ftfy==6.3.1
       - fusepy==3.0.1
       - future==1.0.0
       - gql==3.5.0
