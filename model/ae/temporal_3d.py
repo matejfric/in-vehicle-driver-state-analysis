@@ -1,22 +1,200 @@
+from typing import Any, Literal, TypedDict
+
+import pytorch_lightning as L
 import torch
 import torch.nn as nn
 import torch.optim
+from torchmetrics.functional import mean_absolute_error, mean_squared_error
+
+from model.common import BatchSizeDict, ModelStages
 
 from .common import Decoder, Encoder
 
-# TODO:
-# class Conv3dAutoencoder(nn.Module):
-#     def __init__(self) -> None:
-#         super().__init__()
-#         self.encoder = Conv3dEncoder()
-#         self.decoder = Conv3dDecoder()
-#         self.predictor = Conv3dDecoder()
 
-#     def forward(self, x: torch.Tensor) -> tuple[torch.Tensor]:
-#         encoded = self.encoder(x)
-#         decoded = self.decoder(encoded)
-#         predicted = self.predictor(encoded)
-#         return decoded, predicted
+class STAELosses(TypedDict):
+    total_loss: torch.Tensor
+    reconstruction_loss: torch.Tensor
+    prediction_loss: torch.Tensor
+    regularization_loss: torch.Tensor
+
+
+class STAELoss(nn.Module):
+    def __init__(self, lambda_reg: float = 1e-4) -> None:
+        super().__init__()
+        self.lambda_reg = lambda_reg
+        self.reconstruction_loss = nn.MSELoss(reduction='mean')
+        self.time_dim_index = 2
+
+    def forward(
+        self,
+        inputs: torch.Tensor,
+        reconstructed: torch.Tensor,
+        future_predictions: torch.Tensor,
+        future_targets: torch.Tensor,
+        model_parameters: list[torch.Tensor],
+    ) -> STAELosses:
+        """The tensors have shape `(batch_size, channels, temporal_dim, height, width)`"""
+
+        # Reconstruction loss
+        L_recon = self.reconstruction_loss(inputs, reconstructed)
+
+        # Prediction loss with weight-decreasing factor
+        T = future_targets.size(self.time_dim_index)  # Number of future frames
+        weights = torch.arange(  # e.g., [4, 3, 2, 1] for T=4
+            T, 0, -1, dtype=torch.float32, device=future_targets.device
+        )
+        weights /= weights.sum()  # Normalize weights
+        prediction_errors = ((future_predictions - future_targets) ** 2).mean(
+            dim=[1, 3, 4]  # Mean over spatial dimensions
+        )
+        # Mean over the batch dimension and multiply by the weights
+        L_pred = (weights * prediction_errors.mean(dim=0)).sum()
+
+        # Regularization term
+        L_reg = sum(param.norm(2) for param in model_parameters)
+
+        # Combined loss
+        total_loss = L_recon + L_pred + self.lambda_reg * L_reg
+        return STAELosses(
+            total_loss=total_loss,
+            reconstruction_loss=L_recon,
+            prediction_loss=L_pred,
+            regularization_loss=L_reg,  # type: ignore
+        )
+
+
+class STAEModel(L.LightningModule):
+    def __init__(
+        self,
+        batch_size_dict: BatchSizeDict,
+        learning_rate: float = 0.0005,  # 5e-4 (Adam default is 1e-3)
+        time_dim_index: Literal[2] = 2,
+        eps: float = 1e-07,  # Adam default is 1e-8
+        lambda_reg: float = 1e-4,
+        **kwargs: dict[Any, Any],
+    ) -> None:
+        """Temporal autoencoder model.
+
+        Assumes that the input tensor has shape `(batch_size, temporal_dim, channels, height, width)` or
+        `(batch_size, channels, temporal_dim, height, width)` depending on the `time_dim_index`.
+
+        Parameters
+        ----------
+        encoder : Encoder
+            Encoder model.
+        decoder : Decoder
+            Decoder model.
+        batch_size_dict : dict
+            Dictionary with batch sizes for `train`, `valid`, and `test` datasets.
+        learning_rate : float, default=1e-4
+        loss_function : {'fro', 'mse'}, default='mse'
+        time_dim_index : int, default=1
+            Index of the temporal dimension in the input tensor.
+            If `1`, the input tensor has shape `(batch_size, temporal_dim, channels, height, width)`.
+            If `2`, the input tensor has shape `(batch_size, channels, temporal_dim, height, width)`.
+        train_noise_std_input: float, default=0.0
+            Standard deviation of the Gaussian noise added to the input image.
+        train_noise_std_latent: float, default=0.0
+            Standard deviation of the Gaussian noise added to the latent space representation.
+        kwargs : dict
+        """
+        super().__init__(**kwargs)
+        self.save_hyperparameters(ignore=['encoder', 'decoder'])
+
+        self.encoder = Conv3dEncoder()
+        self.decoder = Conv3dDecoder()
+        self.predictor = Conv3dDecoder()  # Decoder is the same as the predictor
+        self.batch_size_dict = batch_size_dict
+        self.lr = learning_rate
+        self.eps = eps
+        self.time_dim_index = time_dim_index
+        self.lambda_reg = lambda_reg
+
+        self.loss_function = STAELoss(lambda_reg)
+        self.metrics_ = dict(
+            mae=mean_absolute_error,
+            mse=mean_squared_error,
+            fro=lambda x, y: torch.norm(x - y, dim=1, p='fro'),
+        )
+
+    def forward(self, x: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
+        """Forward pass."""
+        encoded = self.encoder(x)
+        reconstructed = self.decoder(encoded)
+        predicted = self.predictor(encoded)
+
+        return reconstructed, predicted
+
+    def shared_step(
+        self, batch: dict[str, torch.Tensor]
+    ) -> tuple[dict[str, torch.Tensor], dict[str, torch.Tensor]]:
+        images = batch['image']
+        future_images = batch['mask']
+        expected_outputs = images.clone()
+        reconstructed, predicted = self.forward(images)
+
+        losses = self.loss_function(
+            expected_outputs, reconstructed, predicted, future_images, self.parameters()
+        )
+
+        # The tensors have shape `(batch_size, channels, temporal_dim, height, width)`
+        # We need to compute the loss and metrics for each temporal dimension
+        # and then average them.
+
+        metrics = {k: 0 for k in self.metrics_}
+        n_time_steps = images.shape[self.time_dim_index]
+
+        for t in range(n_time_steps):
+            # This select one slice of the tensor along the temporal dimension.
+            # The `slice(None)` is equivalent to `:` in numpy.
+            slice_index = (slice(None),) * self.time_dim_index + (t,)  # e.g.: `:, t`
+
+            # The `contiguous` call is not the most efficient, but `torchmetrics` are using
+            # `view` internally in places where `reshape` should be used.
+            recon_slice = reconstructed[slice_index].contiguous()
+            output_slice = expected_outputs[slice_index].contiguous()
+
+            # Accumulate metrics for each temporal slice
+            for k, metric_fn in self.metrics_.items():
+                metrics[k] += metric_fn(recon_slice, output_slice)  # type: ignore
+
+        # Average loss and metrics across the temporal dimension
+        metrics = {k: v / n_time_steps for k, v in metrics.items()}
+
+        return losses, metrics  # type: ignore
+
+    def log_metrics(
+        self,
+        losses: dict[str, torch.Tensor],
+        metrics: dict[str, torch.Tensor],
+        mode: ModelStages,
+    ) -> None:
+        metrics = {f'{mode}_{k}': v.mean() for k, v in metrics.items()}
+        losses = {f'{mode}_{k}': v for k, v in losses.items()}
+        self.log_dict(
+            metrics | losses,
+            on_epoch=True,
+            prog_bar=True,
+            batch_size=self.batch_size_dict[mode],
+        )
+
+    def training_step(self, batch: dict, batch_idx: int) -> torch.Tensor:
+        losses, metrics = self.shared_step(batch)
+        self.log_metrics(losses, metrics, 'train')
+        return losses['total_loss']
+
+    def validation_step(self, batch: dict, batch_idx: int) -> None:
+        losses, metrics = self.shared_step(batch)
+        self.log_metrics(losses, metrics, 'valid')
+
+    def test_step(self, batch: dict, batch_idx: int) -> dict:
+        losses, metrics = self.shared_step(batch)
+        self.log_metrics(losses, metrics, 'test')
+        return losses | metrics
+
+    def configure_optimizers(self) -> torch.optim.Optimizer:  # type: ignore
+        optimizer = torch.optim.Adam(self.parameters(), lr=self.lr, eps=self.eps)  # type: ignore
+        return optimizer
 
 
 class Conv3dEncodeBlock(nn.Module):

@@ -242,6 +242,7 @@ def plot_temporal_autoencoder_reconstruction(
     indices: list[int] | None = None,
     random_shuffle: bool = False,
     time_dim_index: Literal[0, 1] = 0,
+    show_heatmap: bool = False,
 ) -> None:
     """Plot predictions from a model on a dataset.
 
@@ -260,10 +261,12 @@ def plot_temporal_autoencoder_reconstruction(
     random_shuffle : bool, default=False
         Shuffle the batches before plotting.
     """
-    from .dataset import TemporalAutoencoderDataset
+    from .dataset import STAEDataset, TemporalAutoencoderDataset
 
-    if not isinstance(data_loader.dataset, TemporalAutoencoderDataset):
-        raise ValueError('DataLoader must be using `TemporalAutoencoderDataset`')
+    if not isinstance(data_loader.dataset, TemporalAutoencoderDataset | STAEDataset):
+        raise ValueError(
+            f'DataLoader must be using either `TemporalAutoencoderDataset` or `STAEDataset`. Actual: `{type(data_loader.dataset)}`.'
+        )
     if not limit and not indices:
         raise ValueError('Either `limit` or `indices` must be provided.')
     if limit and indices:
@@ -276,7 +279,7 @@ def plot_temporal_autoencoder_reconstruction(
     dataset = data_loader.dataset
     window_size = dataset.window_size
     n_cols = window_size
-    n_rows = 2 * (limit or len(indices))  # type: ignore (either limit or indices is provided)
+    n_rows = (3 if show_heatmap else 2) * (limit or len(indices))  # type: ignore (either limit or indices is provided)
     fig, axes = plt.subplots(n_rows, n_cols, figsize=(n_cols * 4, n_rows * 4))
 
     if limit:
@@ -302,6 +305,7 @@ def plot_temporal_autoencoder_reconstruction(
 
             mse = np.mean((input_img - reconst_img) ** 2)
             fro_norm = np.linalg.norm(input_img - reconst_img, ord='fro')
+            diff = np.abs(input_img - reconst_img)
 
             # Plot original and reconstructed images
             axes[2 * row_idx, t].imshow(input_img, cmap='gray')  # type: ignore
@@ -316,8 +320,117 @@ def plot_temporal_autoencoder_reconstruction(
                 va='top',
                 transform=axes[2 * row_idx + 1, t].transAxes,  # type: ignore
             )
+            if show_heatmap:
+                axes[2 * row_idx + 2, t].imshow(diff, cmap='jet')  # type: ignore
 
     plt.tight_layout()
+    if save_path:
+        plt.savefig(save_path)
+    plt.show()
+
+
+def plot_stae_reconstruction(
+    model: LightningModule,
+    data_loader: DataLoader,
+    save_path: str | Path | None = None,
+    limit: int | None = None,
+    indices: list[int] | None = None,
+    random_shuffle: bool = False,
+    show_heatmap: bool = False,
+) -> None:
+    """Plot predictions from a model on a dataset.
+
+    Parameters
+    ----------
+    model : LightningModule
+        PyTorch Lightning model.
+    data_loader : DataLoader
+        PyTorch DataLoader.
+    save_path : str | Path | None, default=None
+        Path to save the plot.
+    limit : int | None, default=None
+        Limit the number of sequences to plot.
+    indices : list[int] | None, default=None
+        List of indices to plot.
+    random_shuffle : bool, default=False
+        Shuffle the batches before plotting.
+    """
+    from .dataset import STAEDataset
+
+    if not isinstance(data_loader.dataset, STAEDataset):
+        raise ValueError(
+            f'DataLoader must be using `STAEDataset`. Actual: `{type(data_loader.dataset)}`.'
+        )
+    if not limit and not indices:
+        raise ValueError('Either `limit` or `indices` must be provided.')
+    if limit and indices:
+        raise ValueError('Only one of `limit` or `indices` can be provided.')
+    if indices and random_shuffle:
+        raise ValueError('`random_shuffle` is only for `limit`.')
+
+    model.eval()
+    device = model.device
+    dataset = data_loader.dataset
+    n_cols = 3 if show_heatmap else 2
+    n_rows = limit or len(indices)  # type: ignore (either limit or indices is provided)
+    fig, axes = plt.subplots(n_rows, n_cols, figsize=(n_cols * 4, n_rows * 4))
+
+    if limit:
+        indices = (
+            random.sample(range(len(data_loader.dataset)), limit)
+            if random_shuffle
+            else list(range(limit))
+        )
+
+    for row_idx, idx in enumerate(indices):  # type: ignore
+        sequence = dataset[idx]['image']
+        with torch.no_grad():
+            reconstruction = model(sequence.unsqueeze(0).to(device))[0]  # type: ignore
+        reconstruction = reconstruction.squeeze().cpu().detach()
+
+        # Take the first frame of the sequence
+        input_img = sequence[:, 0].numpy().squeeze()  # type: ignore
+        reconst_img = reconstruction[0].numpy().squeeze()
+
+        mse = np.mean((input_img - reconst_img) ** 2)
+        fro_norm = np.linalg.norm(input_img - reconst_img, ord='fro')
+        diff = np.abs(input_img - reconst_img)
+
+        # Plot original and reconstructed images
+        axes[row_idx, 0].imshow(input_img, cmap='gray')  # type: ignore
+        axes[row_idx, 0].axis('off')  # type: ignore
+        axes[row_idx, 1].imshow(reconst_img, cmap='gray')  # type: ignore
+        axes[row_idx, 1].axis('off')  # type: ignore
+        axes[row_idx, 1].text(  # type: ignore
+            # (0, 0) is lower-left and (1, 1) is upper-right
+            0.98,
+            0.98,
+            f'MSE={mse:.3f}\nFRO={fro_norm:.3f}',
+            bbox={'boxstyle': 'round', 'facecolor': 'white', 'pad': 0.5},
+            ha='right',
+            va='top',
+            transform=axes[row_idx, 1].transAxes,  # type: ignore
+            fontsize=9,
+        )
+        if show_heatmap:
+            heatmap = axes[row_idx, 2].imshow(diff, cmap='jet')  # type: ignore
+            axes[row_idx, 2].axis('off')  # type: ignore
+
+    # Add column titles
+    col_titles = ['Original', 'Reconstructed']
+    if show_heatmap:
+        col_titles.append('Difference')
+    for col_idx, title in enumerate(col_titles):
+        axes[0, col_idx].set_title(title, fontsize=12, pad=20)  # type: ignore
+
+    # Add a colorbar for the heatmap
+    if show_heatmap:
+        height_factor = 1 / n_rows  # Dynamically scale the colorbar height
+        cbar_ax = fig.add_axes([0.92, (1 - height_factor) / 2, 0.02, height_factor])  # type: ignore
+        # cbar_ax = fig.add_axes([0.92, 0.15, 0.02, 0.7])  # [left, bottom, width, height]
+        plt.colorbar(heatmap, cax=cbar_ax, label='Absolute Difference')
+
+    # plt.tight_layout()
     if save_path:
         plt.savefig(save_path)
     plt.show()
@@ -438,6 +551,7 @@ def plot_learning_curves(
     save_path: str | Path | None = None,
     metrics: dict[str, str] = {'jaccard': 'Jaccard Index', 'f1s': 'F1 Score'},
     figsize: tuple[int, int] = (15, 5),
+    loss_name: str = 'loss',
 ) -> None:
     """Plot learning curves from a CSV log file generated by PyTorch Lightning.
 
@@ -465,7 +579,11 @@ def plot_learning_curves(
 
     # Plot loss
     df_epoch.plot(
-        x='epoch', y=['train_loss', 'valid_loss'], ax=ax[0], title='Loss', linewidth=2
+        x='epoch',
+        y=[f'train_{loss_name}', f'valid_{loss_name}'],
+        ax=ax[0],
+        title='Loss',
+        linewidth=2,
     )
     ax[0].legend(['Training loss', 'Validation loss'], frameon=True)
     ax[0].set_ylabel('Loss')

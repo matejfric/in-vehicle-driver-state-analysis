@@ -17,8 +17,8 @@ from .memory_map import MemMapReader
 
 class DatasetItem(TypedDict):
     image: np.ndarray | torch.Tensor
-    mask: np.ndarray | torch.Tensor
-    filename: str | int
+    mask: np.ndarray | torch.Tensor  # copy of `image` for AE or future frames for STAE
+    filename: str | int  # first frame index or filename
 
 
 class SegmentationDataset(Dataset):
@@ -231,6 +231,83 @@ class TemporalAutoencoderDataset(Dataset):
         return DatasetItem(
             image=temporal_tensor,
             mask=temporal_tensor,
+            filename=idx,
+        )
+
+
+class STAEDataset(Dataset):
+    def __init__(
+        self,
+        memory_map_file: Path | str,
+        memory_map_image_shape: tuple[int, int] = (256, 256),
+        window_size: int = 4,
+        transforms: albu.Compose | None = None,
+        input_transforms: albu.Compose | None = None,
+    ) -> None:
+        """Dataset for Spatio-Temporal Autoencoder (STAE). Yields two sequences of frames (input and target) and a set of future frames.
+
+        Parameters
+        ----------
+        memory_map_file : Path | str
+            Path to `numpy.memmap` file (`.dat`).
+        memory_map_image_shape : tuple[int, int], default=(256, 256)
+            Shape of the images in `memory_map_file`.
+        window_size : int, default=4
+            Number of frames to include in each sample (sequence lenght).
+        time_step : int, default=1
+            Number of frames to skip between samples.
+        time_dim_index : Literal[0, 1], default=0
+            Index of the time dimension in the output tensor,
+            1 for (C, T, H, W) and 0 for (T, C, H, W).
+        transforms : albu.Compose, default=None
+            Compose object with albumentations transforms.
+        input_transforms : albu.Compose, default=None
+            Compose object with albumentations transforms to apply to the input image only.
+
+        Note
+        ----
+        ```
+        window_size = 2  # 2 frames to reconstruct, 2 frames to predict
+
+        Input 0 1 2 3 4 5 6 7 8 9
+        Seq0  x x y y
+        Seq1    x x y y
+        Seq2      x x y y
+        ```
+        """
+        self.memory_map_file = memory_map_file
+        self.memory_map = MemMapReader(memory_map_file, memory_map_image_shape)
+        self.window_size = window_size
+        self.time_dim_index = 1
+        self.default_transform_ = T.ToTensor()
+        self.transforms = transforms
+        self.input_transforms = input_transforms
+
+        # Number of temporal slices in the dataset.
+        self.length_ = (
+            get_last_window_index(len(self.memory_map), window_size) - window_size
+        )
+
+    def __len__(self) -> int:
+        """Number of temporal slices in the dataset (samples)."""
+        return self.length_
+
+    def _get_temporal_tensor(self, idx: int) -> torch.Tensor:
+        # Memory map is read-only by default, we need mutable copies of the numpy arrays.
+        temporal_slice = self.memory_map.window_mut(idx, self.window_size)
+        # list[(C, H, W)]
+        temporal_slice = [self.default_transform_(image) for image in temporal_slice]
+        # (T, C, H, W)
+        temporal_tensor = torch.stack(temporal_slice)  # type: ignore
+        if self.time_dim_index == 1:
+            # (C, T, H, W)
+            temporal_tensor = temporal_tensor.permute(1, 0, 2, 3)
+        return temporal_tensor
+
+    def __getitem__(self, idx: int) -> DatasetItem:
+        return DatasetItem(
+            image=self._get_temporal_tensor(idx),
+            mask=self._get_temporal_tensor(idx + self.window_size),
             filename=idx,
         )
 
