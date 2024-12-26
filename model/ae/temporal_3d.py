@@ -200,9 +200,9 @@ class STAEModel(L.LightningModule):
 class Conv3dEncodeBlock(nn.Module):
     def __init__(self, out_channels: int) -> None:
         super().__init__()
-        self.conv = nn.LazyConv3d(out_channels, kernel_size=3, padding=1, bias=False)
+        self.conv = nn.LazyConv3d(out_channels, kernel_size=3, padding=1, bias=True)
         self.bn = nn.BatchNorm3d(out_channels)
-        self.relu = nn.ReLU()
+        self.relu = nn.LeakyReLU()  # nn.ReLU()
         self.pool = nn.MaxPool3d(2)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
@@ -222,10 +222,10 @@ class Conv3dDecodeBlock(nn.Module):
             stride=2,
             padding=1,
             output_padding=1,
-            bias=False,
+            bias=True,
         )
         self.bn = nn.BatchNorm3d(out_channels)
-        self.relu = nn.ReLU()
+        self.relu = nn.LeakyReLU()  # nn.ReLU()
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         x = self.deconv(x)
@@ -264,11 +264,15 @@ class Conv3dDecoder(Decoder):
         self.deconv1 = Conv3dDecodeBlock(64)
         self.deconv2 = Conv3dDecodeBlock(48)
         self.deconv3 = Conv3dDecodeBlock(32)
-        self.deconv4 = Conv3dDecodeBlock(1)
+        self.deconv4 = Conv3dDecodeBlock(16)
+        self.conv_out = nn.LazyConv3d(1, kernel_size=3, padding=1, bias=True)
+        self.sigmoid = nn.Sigmoid()
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         x = self.deconv1(x)
         x = self.deconv2(x)
         x = self.deconv3(x)
         x = self.deconv4(x)
+        x = self.conv_out(x)
+        x = self.sigmoid(x)
         return x
