@@ -16,17 +16,23 @@ mindmap
         (GT Mask)
             YOLOv8x
                 Segment Anything 2
-        (Segmentation)
+        (Semantic Segmentation)
             EfficientNetB0
                 U-Net
         (Monocular Depth Estimation)
-            Depth Anything 2
+            Depth Anything
+                Depth Anything 2
             Intel MiDaS ...worse
         (Edge Detection)
             Canny
             Sobel
             Laplacian
+        (Pose Estimation)
+            Graph NN
+            YOLOv11
         LBP
+        OpenAI CLIP
+        Text
 ```
 
 ### 2.2. Anomaly Detection
@@ -50,11 +56,11 @@ mindmap
 ```mermaid
 mindmap
     root(("`AE Loss`"))
+        MAE - L1
+        MSE - L2
         (Regularized)
             Encoder Outputs
             Model Weights
             Prediction
-        Contractive
-        MAE - L1
-        MSE - L2
+            Contractive
 ```
