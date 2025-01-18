@@ -1,51 +1,29 @@
-35 140 one hand
 248 387 cough
-436 467 one hand
 616 807 cough
 942 1058 cough
 1134 1162 cough
-1239 1326 one hand
 2125 2228 cough
-2263 2351 one hand
 2731 2857 cough
-2917 3033 one hand
-3059 3076 head spinning
 3233 3415 cough
 3610 3682 cough
 3747 3787 hand wiping
-3952 3990 one hand
 4340 4410 cough
 4441 4487 cough
-4498 4561 one hand
 4911 5057 cough
 5106 5130 hand wiping
 5242 5290 nose wiping
-5671 5867 head spinning
 5872 6091 cough
 6185 6210 hand wiping
 6608 6718 cough
 6948 7018 cough
 7806 7963 cough
-8130 8150 head spinning one hand
-8150 8454 one hand
-8454 8520 head spinning one hand
-8520 8546 one hand
-8546 8673 head spinning
 8807 8915 cough
 8960 8985 hand wiping
-9129 9241 head spinning
-9581 9592 head spinning
 9636 9672 cough
 9980 10005 cough
 10033 10115 hand wiping
-10582 10754 one hand
-10754 10807 one hand head spinning
-10807 10966 head spinning
-11190 11250 head spinning
-11487 11569 head spinning
-11679 11735 head spinning
 12014 12201 cough
 12253 12286 cough
 12313 12360 hand wiping
+12625 12677 cough
 12751 12786 cough
-13000 13051 head spinning
