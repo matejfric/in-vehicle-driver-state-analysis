@@ -694,3 +694,124 @@ def plot_roc_chart(
     plt.show()
 
     return roc_auc, optimal_threshold  # type: ignore
+
+
+def plot_roc_charts(
+    y_true_list: list[np.ndarray | list[int]],
+    y_pred_proba_list: list[np.ndarray | list[float]],
+    titles: list[str] | None = None,
+    save_path: str | Path | None = None,
+    figsize: tuple[int, int] | None = None,
+    cmap: str = 'rainbow',
+    cbar_text: str = 'Thresholds',
+) -> list[tuple[float, float]]:
+    """Plot multiple ROC curves with optimal thresholds side by side.
+
+    Parameters
+    ----------
+    y_true_list : list of arrays
+        List of true binary labels arrays.
+    y_pred_proba_list : list of arrays
+        List of predicted probabilities arrays.
+    titles : list of str, optional
+        List of titles for each subplot. If None, will use default titles.
+    figsize : tuple, optional
+        Figure size. If None, will be calculated based on number of plots.
+    cmap : str, default='rainbow'
+        Colormap for the thresholds. One of `matplotlib.pyplot.colormaps()`.
+    cbar_text : str, default='Thresholds'
+        Label for the colorbar.
+
+    Returns
+    -------
+    metrics : list of tuples
+        List of (roc_auc, optimal_threshold) tuples for each plot.
+    """
+    n_plots = len(y_true_list)
+    if not n_plots == len(y_pred_proba_list):
+        raise ValueError('Length of y_true_list and y_pred_proba_list must match')
+
+    if titles is None:
+        titles = [f'ROC Chart {i + 1}' for i in range(n_plots)]
+    elif len(titles) != n_plots:
+        raise ValueError('Length of titles must match number of plots')
+
+    # Calculate default figsize if not provided
+    if figsize is None:
+        figsize = (7 * n_plots, 7)
+
+    # Create figure with gridspec to accommodate colorbar
+    fig = plt.figure(figsize=figsize)
+    gs = plt.GridSpec(1, n_plots + 1, width_ratios=[1] * n_plots + [0.05])
+    axes = [fig.add_subplot(gs[0, i]) for i in range(n_plots)]
+
+    # Initialize list to store metrics
+    metrics = []
+
+    # Use fixed colormap range from 0 to 1
+    norm = plt.Normalize(vmin=0, vmax=1)
+
+    # Create plots
+    for idx, (ax, y_true, y_pred_proba, title) in enumerate(
+        zip(axes, y_true_list, y_pred_proba_list, titles)
+    ):
+        # Calculate ROC curve
+        fpr, tpr, thresholds = roc_curve(y_true[: len(y_pred_proba)], y_pred_proba)
+        roc_auc = auc(fpr, tpr)
+        j_scores = tpr - fpr
+        optimal_idx = j_scores.argmax()
+        optimal_threshold = thresholds[optimal_idx]
+
+        # Store metrics
+        metrics.append((roc_auc, optimal_threshold))
+
+        # Plot ROC curve
+        ax.plot(fpr, tpr, c='black', label=f'AUC={roc_auc:.3f}')
+        scatter = ax.scatter(fpr, tpr, c=thresholds, cmap=cmap, norm=norm)
+
+        # Random predictions curve
+        ax.plot([0, 1], [0, 1], 'k--', alpha=0.5)
+
+        # Optimal threshold line and text
+        ax.plot(
+            [fpr[optimal_idx], fpr[optimal_idx]],
+            [fpr[optimal_idx], tpr[optimal_idx]],
+            'k',
+            linestyle='solid',
+        )
+        ax.text(
+            fpr[optimal_idx] + 0.01,
+            (fpr[optimal_idx] + tpr[optimal_idx]) / 2,
+            f'J={optimal_threshold:.2f}',
+            # fontsize=12,
+        )
+
+        # Set title and limits
+        ax.set_title(title)
+        ax.set_xlim([0, 1])
+        ax.set_ylim([0, 1])
+        ax.axis('square')
+
+        # Handle axis labels and ticks
+        if idx == 0:
+            ax.set_ylabel('True positive rate')
+        else:
+            # Remove y-axis labels for all but the first plot
+            ax.set_yticklabels([])
+
+        # Add x-label to all plots
+        ax.set_xlabel('False positive rate')
+        ax.legend(loc='lower right')
+
+    # Add colorbar in the last column of gridspec
+    cbar_ax = fig.add_subplot(gs[0, -1])
+    cbar = fig.colorbar(scatter, cax=cbar_ax)
+    cbar.set_label(cbar_text)
+
+    plt.tight_layout()
+
+    if save_path:
+        plt.savefig(save_path, bbox_inches='tight')
+    plt.show()
+
+    return metrics
