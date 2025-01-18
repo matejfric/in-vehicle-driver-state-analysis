@@ -287,7 +287,8 @@ class STAEDataset(Dataset):
 
         # Number of temporal slices in the dataset.
         self.length_ = (
-            get_last_window_index(len(self.memory_map), window_size) - window_size
+            get_last_window_index(len(self.memory_map), window_size, time_step)
+            - window_size * time_step
         )
 
     def __len__(self) -> int:
