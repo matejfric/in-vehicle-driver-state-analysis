@@ -68,17 +68,24 @@ class Anomalies:
             if not line.strip():
                 continue
             parts = line.split()
+            if len(parts) < 3:
+                raise ValueError(f'Invalid line: `{line}`. File: `{path}`')
+            if '#' in parts[0]:
+                continue
             start = int(parts[0])
             end = int(parts[1])
-            labels = parts[2:]
+            labels = ' '.join(parts[2:]).split(',')
+            labels = [label.strip() for label in labels]
             parsed_data.append(Anomaly(start=start, end=end, labels=labels))
 
         return Anomalies(parsed_data)
 
-    def to_ground_truth(self, length: int) -> list[int]:
+    def to_ground_truth(self, length: int = -1) -> list[int]:
         """Convert the anomalies to a ground truth list for binary classification.
         Negative samples are labeled as 0, positive samples are labeled as 1.
         """
+        if length == -1:
+            length = max([anomaly.end for anomaly in self.anomalies])
         ground_truth = [0] * length
         for anomaly in self.anomalies:
             ground_truth[anomaly.start : anomaly.end] = [1] * (
