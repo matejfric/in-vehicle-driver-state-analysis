@@ -20,7 +20,7 @@
 7232 7359 only right
 7350 7398 cough, only right
 7575 7765 only right
-8068 8094 sneeze, only right
+8068 8094 sneezing, only right
 8301 8380 hands off, eyes closed
 8380 8430 hands off
 10155 10225 cough, only right
@@ -28,11 +28,11 @@
 11008 11085 scratch, only right
 11780 11830 hands off, eyes closed
 11830 11950 hands off
-11950 12070 one hand
+11950 12070 only right
 13069 13144 cough, only right
 13424 13889 only right
 14210 14320 hands off
-14831 14890 head spinning
+14831 14890 not looking road
 15039 15140 radio, only right
 15359 15990 radio, only right
 16537 16826 only right
