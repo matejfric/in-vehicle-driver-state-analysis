@@ -1,0 +1,27 @@
+287 520 safety belts
+880 1125 radio
+1870 1998 cough
+2704 2764 cough
+3492 3555 scratch
+3614 3677 cough
+4279 4460 hands off
+5517 5690 hands off
+6024 6115 hands off
+6788 7000 hands off  
+7350 7398 cough
+7575 7765 hands off
+8068 8094 sneeze
+8301 8430 hands off
+10155 10225 cough
+10403 10778 hands off
+11008 11085 hands off
+11780 12089 hands off
+13069 13144 cough
+13424 13889 hands off
+14210 14320 hands off
+14831 14900 head spinning
+15039 15155 hands off
+15359 15938 hands off
+16537 16649 hands off
+17615 17676 cough
+18275 18793 hands off

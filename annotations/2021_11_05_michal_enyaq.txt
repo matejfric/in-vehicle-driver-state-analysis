@@ -1,0 +1,23 @@
+272 322 cough
+515 546 hands off
+712 739 cough without hands
+1239 1445 hands off
+1516 1573 cough
+2033 2050 cough without hands
+2972 3090 cough
+3425 3452 sneezing
+3531 3585 hands off
+4578 4598 hands off
+4748 4840 cough
+5347 5444 cough
+5592 5651 cough without hands
+6188 6262 cough
+6677 6715 sneezing
+6780 6820 hands off
+7117 7154 cough
+7215 7257 cough
+7982 8028 cough
+8224 8255 cough without hands
+8805 8838 cough without hands
+9969 10001 hands off
+10039 10147 cough

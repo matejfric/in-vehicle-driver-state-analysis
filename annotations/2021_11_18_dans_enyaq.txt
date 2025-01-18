@@ -1,0 +1,21 @@
+889 1036 cough
+1051 1089 cough
+2082 2224 cough
+2367 2400 cough
+3121 3669 phone
+4080 4353 cough
+5542 5585 cough
+5746 5772 cough
+7109 7152 hand off
+7422 7480 hand off
+7482 7640 cough
+8100 8122 hand off
+9463 10023 phone
+10024 10070 cough + phone
+10070 10176 phone
+10953 11044 cough
+11508 11548 cough
+13401 13669 hand off
+13924 14005 hand off
+14496 14602 cough without hands
+16281 16583 hand off
