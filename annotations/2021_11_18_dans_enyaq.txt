@@ -1,21 +1,46 @@
-889 1036 cough
-1051 1089 cough
-2082 2224 cough
-2367 2400 cough
-3121 3669 phone
-4080 4353 cough
-5542 5585 cough
-5746 5772 cough
-7109 7152 hand off
-7422 7480 hand off
-7482 7640 cough
-8100 8122 hand off
-9463 10023 phone
-10024 10070 cough + phone
-10070 10176 phone
-10953 11044 cough
-11508 11548 cough
-13401 13669 hand off
-13924 14005 hand off
-14496 14602 cough without hands
-16281 16583 hand off
+50 68 only right
+889 1036 cough, only right
+1051 1089 cough, only left
+1255 1415 only right
+1850 1930 only right
+2082 2224 cough, only right
+2320 2367 only right
+2367 2400 cough, only right
+2400 2460 only right
+3060 3121 only right
+3121 3675 phone, only right
+3675 3685 only right
+4080 4353 cough, only right
+4353 4530 only right
+4985 5092 only right
+5275 5408 only right
+5542 5585 cough, hands off
+5746 5772 cough, only right
+5975 6120 only right
+7033 7152 only right
+7415 7482 only right
+7482 7640 cough, only right
+7840 8327 only right
+8520 8590 only right
+8668 8825 only right
+8850 8952 only left
+9115 9175 only left
+9252 9358 only right
+9400 9463 only right
+9463 10023 phone, only right
+9886 9975 hands off
+10020 10074 hands off, cough, phone
+10074 10177 phone, only right
+10953 11044 cough, only right
+11508 11548 cough, only left
+13365 13401 only right
+13401 13669 hands off
+13493 13588 scratch, hands off
+13588 13612 hands off
+13612 13654 only left
+13654 13664 hands off
+13664 13924 only right
+13924 14005 hands off
+14496 14602 cough
+15035 15175 only right
+16281 16583 only right

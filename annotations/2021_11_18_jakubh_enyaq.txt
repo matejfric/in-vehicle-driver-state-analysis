@@ -1,29 +1,41 @@
-248 387 cough
-616 807 cough
-942 1058 cough
-1134 1162 cough
-2125 2228 cough
-2731 2857 cough
-3233 3415 cough
-3610 3682 cough
-3747 3787 hand wiping
-4340 4410 cough
-4441 4487 cough
-4911 5057 cough
-5106 5130 hand wiping
-5242 5290 nose wiping
-5872 6091 cough
-6185 6210 hand wiping
-6608 6718 cough
-6948 7018 cough
-7806 7963 cough
-8807 8915 cough
-8960 8985 hand wiping
-9636 9672 cough
-9980 10005 cough
-10033 10115 hand wiping
-12014 12201 cough
-12253 12286 cough
-12313 12360 hand wiping
-12625 12677 cough
-12751 12786 cough
+39 125 only left
+248 395 cough, only right
+427 470 only left
+616 807 cough, only right
+942 1058 cough, only right
+1134 1162 cough, only right
+1250 1321 only left
+2125 2228 cough, only right
+2253 2352 only left
+2731 2857 cough, only right
+2916 3030 only left
+3233 3415 cough, only right
+3610 3682 cough, only right
+3745 3787 only right
+4340 4410 cough, only right
+4441 4487 cough, only left
+4487 4540 only left
+4620 4635 only right
+4911 5070 cough, only right
+5103 5140 only right
+5242 5290 only left
+5685 5740 only left
+5872 6091 cough, only right
+6185 6210 only right
+6608 6718 cough, only right
+6948 7018 cough, only right
+7806 7963 cough, only right
+# 8145 8525 only left
+8675 8735 only right
+8807 8915 cough, only right
+8960 8985 only right
+9636 9672 cough, only right
+9980 10010 cough, only right
+10010 10125 only right
+10590 10750 only left
+12014 12201 cough, only right
+12253 12286 cough, only right
+12286 12360 only right
+12625 12677 cough, only right
+12751 12786 cough, only right
+13040 13100 only left

@@ -1,23 +1,24 @@
-272 322 cough
-515 546 hands off
-712 739 cough without hands
-1239 1445 hands off
-1516 1573 cough
-2033 2050 cough without hands
-2972 3090 cough
-3425 3452 sneezing
-3531 3585 hands off
-4578 4598 hands off
-4748 4840 cough
-5347 5444 cough
-5592 5651 cough without hands
-6188 6262 cough
-6677 6715 sneezing
-6780 6820 hands off
-7117 7154 cough
-7215 7257 cough
-7982 8028 cough
-8224 8255 cough without hands
-8805 8838 cough without hands
-9969 10001 hands off
-10039 10147 cough
+272 322 cough, only right
+515 546 only left
+712 739 cough
+1239 1445 only right
+1516 1573 cough, only right
+1800 1935 only right
+2033 2050 cough
+2972 3090 cough, only right
+3425 3452 sneezing, only right
+3531 3585 only right
+4578 4598 only right
+4748 4840 cough, only right
+5347 5444 cough, only left
+5592 5651 cough
+6188 6262 cough, only right
+6677 6715 sneezing, only right
+6780 6820 only right
+7117 7154 cough, only left
+7215 7257 cough, only left
+7982 8028 cough, only right
+8224 8255 cough
+8805 8838 cough
+9969 10001 only left
+10039 10147 cough, only right
