@@ -241,6 +241,7 @@ class STAEDataset(Dataset):
         memory_map_file: Path | str,
         memory_map_image_shape: tuple[int, int] = (256, 256),
         window_size: int = 4,
+        time_step: int = 1,
         transforms: albu.Compose | None = None,
         input_transforms: albu.Compose | None = None,
     ) -> None:
@@ -278,6 +279,7 @@ class STAEDataset(Dataset):
         self.memory_map_file = memory_map_file
         self.memory_map = MemMapReader(memory_map_file, memory_map_image_shape)
         self.window_size = window_size
+        self.time_step = time_step
         self.time_dim_index = 1
         self.default_transform_ = T.ToTensor()
         self.transforms = transforms
@@ -294,7 +296,9 @@ class STAEDataset(Dataset):
 
     def _get_temporal_tensor(self, idx: int) -> torch.Tensor:
         # Memory map is read-only by default, we need mutable copies of the numpy arrays.
-        temporal_slice = self.memory_map.window_mut(idx, self.window_size)
+        temporal_slice = self.memory_map.window_mut(
+            idx, self.window_size, self.time_step
+        )
         # list[(C, H, W)]
         temporal_slice = [self.default_transform_(image) for image in temporal_slice]
         # (T, C, H, W)

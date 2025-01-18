@@ -742,14 +742,14 @@ def plot_roc_charts(
 
     # Create figure with gridspec to accommodate colorbar
     fig = plt.figure(figsize=figsize)
-    gs = plt.GridSpec(1, n_plots + 1, width_ratios=[1] * n_plots + [0.05])
+    gs = plt.GridSpec(1, n_plots + 1, width_ratios=[1] * n_plots + [0.05])  # type: ignore
     axes = [fig.add_subplot(gs[0, i]) for i in range(n_plots)]
 
     # Initialize list to store metrics
     metrics = []
 
     # Use fixed colormap range from 0 to 1
-    norm = plt.Normalize(vmin=0, vmax=1)
+    norm = plt.Normalize(vmin=0, vmax=1)  # type: ignore
 
     # Create plots
     for idx, (ax, y_true, y_pred_proba, title) in enumerate(
@@ -788,8 +788,8 @@ def plot_roc_charts(
 
         # Set title and limits
         ax.set_title(title)
-        ax.set_xlim([0, 1])
-        ax.set_ylim([0, 1])
+        ax.set_xlim([0, 1])  # type: ignore
+        ax.set_ylim([0, 1])  # type: ignore
         ax.axis('square')
 
         # Handle axis labels and ticks
