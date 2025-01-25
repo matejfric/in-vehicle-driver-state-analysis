@@ -14,7 +14,7 @@ def main(args: argparse.Namespace) -> None:
     )
 
     # Gather all image paths in the specified directory
-    image_paths = list(image_dir.glob(f'*.{args.extension}'))
+    image_paths = sorted(image_dir.glob(f'*.{args.extension}'), key=lambda x: x.stem)
     if not image_paths:
         raise ValueError(f'No images found in {image_dir}.')
 

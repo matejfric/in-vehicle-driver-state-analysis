@@ -261,9 +261,16 @@ def plot_temporal_autoencoder_reconstruction(
     random_shuffle : bool, default=False
         Shuffle the batches before plotting.
     """
-    from .dataset import STAEDataset, TemporalAutoencoderDataset
+    from .dataset import (
+        STAEDataset,
+        TemporalAutoencoderDataset,
+        TemporalAutoencoderDatasetDMD,
+    )
 
-    if not isinstance(data_loader.dataset, TemporalAutoencoderDataset | STAEDataset):
+    if not isinstance(
+        data_loader.dataset,
+        TemporalAutoencoderDataset | STAEDataset | TemporalAutoencoderDatasetDMD,
+    ):
         raise ValueError(
             f'DataLoader must be using either `TemporalAutoencoderDataset` or `STAEDataset`. Actual: `{type(data_loader.dataset)}`.'
         )

@@ -1,4 +1,4 @@
-from collections.abc import Callable, Generator, Iterable
+from collections.abc import Callable, Generator
 from pathlib import Path
 
 import numpy as np
@@ -6,6 +6,12 @@ from PIL import Image
 from tqdm import tqdm
 
 from .common import crop_driver_image_contains
+
+
+def resize_driver(image_path: Path, resize: tuple[int, int]) -> np.ndarray:
+    image_pil = Image.open(image_path)
+    image_pil = image_pil.resize(resize)
+    return np.array(image_pil)
 
 
 def crop_resize_driver(image_path: Path, resize: tuple[int, int]) -> np.ndarray:
@@ -33,7 +39,7 @@ def crop_mask_resize_driver(image_path: Path, resize: tuple[int, int]) -> np.nda
 class MemMapWriter:
     def __init__(
         self,
-        image_paths: Iterable[Path],
+        image_paths: list[Path],
         output_file: Path | str = 'mem_map.dat',
         func: Callable = crop_resize_driver,
         resize: tuple[int, int] = (256, 256),
@@ -41,18 +47,20 @@ class MemMapWriter:
     ) -> None:
         """Initialize MemMapWriter with parameters to process and save images to a memory-mapped file.
 
+        WARNING: The images should be sorted, if the order is important!
+
         Example
         -------
         >>> from pathlib import Path
         >>> from model.memory_map import MemMapWriter
         >>>
-        >>> image_paths = Path('data').glob('*.png')
+        >>> image_paths = sorted(Path('data').glob('*.png'), key=lambda x: x.stem)
         >>> with MemMapWriter(image_paths, 'mem_map.dat') as f:
         >>>     f.write()
         """
         self.resize = resize
         self.func = func
-        self.image_paths = sorted(image_paths)
+        self.image_paths = image_paths
         self.output_file = (
             Path(output_file) if isinstance(output_file, str) else output_file
         )
@@ -71,11 +79,14 @@ class MemMapWriter:
     def __repr__(self) -> str:
         return f'MemMap with {len(self):,} images:\n- Output file: {self.output_file}\n- Resize: {self.resize}\n- dtype: {self.dtype.__name__}\n- func: {self.func.__name__}'
 
-    def write(self) -> None:
+    def write(self, overwrite: bool = False) -> None:
         """Process images with `func` and write them to the memory-mapped file."""
 
         if self.output_file.exists():
-            raise FileExistsError(f'{self.output_file} already exists.')
+            if overwrite:
+                self.output_file.unlink()
+            else:
+                raise FileExistsError(f'{self.output_file} already exists.')
         if self.output_file.suffix != '.dat':
             raise ValueError('`output_file` must have a `.dat` extension.')
         self.output_file.parent.mkdir(parents=True, exist_ok=True)

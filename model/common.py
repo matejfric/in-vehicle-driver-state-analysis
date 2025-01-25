@@ -3,7 +3,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal, TypeAlias, TypedDict
 
-from PIL import Image
+from PIL import Image, ImageOps
 
 ModelStages: TypeAlias = Literal['train', 'valid', 'test']
 
@@ -30,6 +30,17 @@ def crop_driver_image_contains(image: Image.Image, image_path: Path) -> Image.Im
     return image.crop((0, 0, image.size[1], image.size[1]))
 
 
+def pad_to_square(image: Image.Image, fill: str = 'black') -> Image.Image:
+    w, h = image.size
+    padding = (w - h) // 2
+    padded_image = ImageOps.expand(
+        image,
+        border=(0, padding, 0, padding),
+        fill=fill,
+    )
+    return padded_image
+
+
 @dataclass
 class Anomaly:
     start: int
@@ -41,8 +52,11 @@ class Anomaly:
 
 
 class Anomalies:
-    def __init__(self, anomalies: list[Anomaly]) -> None:
+    def __init__(
+        self, anomalies: list[Anomaly], video_length: int | None = None
+    ) -> None:
         self.anomalies = anomalies
+        self.video_length = video_length
 
     def __len__(self) -> int:
         return len(self.anomalies)
@@ -55,6 +69,37 @@ class Anomalies:
 
     def __iter__(self) -> Iterator[Anomaly]:
         return iter(self.anomalies)
+
+    @staticmethod
+    def from_json(path: str | Path) -> 'Anomalies':
+        """Create an Anomalies instance from a JSON annotation file in VCD format.
+
+        Note
+        ----
+        https://vcd.vicomtech.org/
+        """
+        import json
+
+        from model.dmd import DISTRACTIONS
+
+        with open(path) as f:
+            annotations = json.load(f)
+
+        video_length = annotations['openlabel']['frame_intervals'][0]['frame_end']
+        actions = annotations['openlabel']['actions']
+
+        anomalies = []
+        for value in actions.values():
+            if (label := value['type']) in DISTRACTIONS:
+                for frame_interval in value['frame_intervals']:
+                    anomalies.append(
+                        Anomaly(
+                            start=frame_interval['frame_start'],
+                            end=frame_interval['frame_end'],
+                            labels=[label],
+                        )
+                    )
+        return Anomalies(anomalies=anomalies, video_length=video_length)
 
     @staticmethod
     def from_file(path: str | Path) -> 'Anomalies':
@@ -84,6 +129,8 @@ class Anomalies:
         """Convert the anomalies to a ground truth list for binary classification.
         Negative samples are labeled as 0, positive samples are labeled as 1.
         """
+        if self.video_length is not None:
+            length = self.video_length
         if length == -1:
             length = max([anomaly.end for anomaly in self.anomalies])
         ground_truth = [0] * length

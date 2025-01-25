@@ -235,6 +235,120 @@ class TemporalAutoencoderDataset(Dataset):
         )
 
 
+@dataclass
+class VideoInfo:
+    """Information about a video file. Helper class for `TemporalAutoencoderDatasetDMD`."""
+
+    memory_map: 'MemMapReader'
+    start_idx: int  # Global start index for this video
+    length: int  # Number of windows in this video
+
+
+class TemporalAutoencoderDatasetDMD(Dataset):
+    def __init__(
+        self,
+        dataset_dir: Path | str,
+        memory_map_image_shape: tuple[int, int] = (256, 256),
+        window_size: int = 4,
+        time_step: int = 1,
+        time_dim_index: Literal[0, 1] = 0,
+        transforms: albu.Compose | None = None,
+        input_transforms: albu.Compose | None = None,
+        source_type: Literal['depth', 'rgb'] = 'depth',
+    ) -> None:
+        """Dataset for temporal autoencoder supporting multiple video files.
+
+        Each video maintains its independence (frames from different videos are never mixed),
+        but the dataset presents a unified interface for accessing all videos sequentially.
+
+        Assumes naming convention: `{memory_map_image_shape[0]}.dat`.
+        Looks for files like `256.dat` recursively.
+
+        Parameters
+        ----------
+        dataset_dir : Path | str
+            Directory containing multiple `numpy.memmap` files (`.dat`).
+        memory_map_image_shape : tuple[int, int], default=(256, 256)
+            Shape of the images in memory map files.
+        window_size : int, default=4
+            Number of frames to include in each sample (sequence length).
+        time_step : int, default=1
+            Number of frames to skip between samples.
+        time_dim_index : Literal[0, 1], default=0
+            Index of the time dimension in the output tensor,
+            1 for (C, T, H, W) and 0 for (T, C, H, W).
+        transforms : albu.Compose, default=None
+            Compose object with albumentations transforms.
+        input_transforms : albu.Compose, default=None
+            Compose object with albumentations transforms to apply to the input image only.
+        """
+        self.dataset_dir = Path(dataset_dir)
+        self.window_size = window_size
+        self.time_step = time_step
+        self.time_dim_index = time_dim_index
+        self.default_transform_ = T.ToTensor()
+        self.transforms = transforms
+        self.input_transforms = input_transforms
+
+        # Load all memory map files and calculate cumulative indices
+        self.video_files = sorted(
+            self.dataset_dir.rglob(f'{source_type}?{memory_map_image_shape[0]}.dat')
+        )
+        if not self.video_files:
+            raise ValueError(f'No .dat files found in {dataset_dir}')
+
+        self.videos: list[VideoInfo] = []
+        current_idx = 0
+
+        for video_file in self.video_files:
+            memory_map = MemMapReader(video_file, memory_map_image_shape)
+            video_length = get_last_window_index(
+                len(memory_map), window_size, time_step
+            )
+
+            self.videos.append(
+                VideoInfo(
+                    memory_map=memory_map, start_idx=current_idx, length=video_length
+                )
+            )
+            current_idx += video_length
+
+        self.length_ = current_idx
+
+    def __len__(self) -> int:
+        """Total number of temporal slices across all videos."""
+        return self.length_
+
+    def _locate_video(self, idx: int) -> tuple[VideoInfo, int]:
+        """Find which video contains the given index and convert to local index."""
+        for video in self.videos:
+            if idx < video.start_idx + video.length:
+                return video, idx - video.start_idx
+        raise IndexError(f'Index {idx} is out of bounds')
+
+    def __getitem__(self, idx: int) -> DatasetItem:
+        # Find which video contains this index
+        video_info, local_idx = self._locate_video(idx)
+
+        # Get the temporal slice from the appropriate video
+        temporal_slice = video_info.memory_map.window_mut(
+            local_idx, self.window_size, self.time_step
+        )
+
+        # Convert to tensors
+        temporal_slice = [self.default_transform_(image) for image in temporal_slice]
+        temporal_tensor = torch.stack(temporal_slice)  # type: ignore
+
+        if self.time_dim_index == 1:
+            temporal_tensor = temporal_tensor.permute(1, 0, 2, 3)
+
+        return DatasetItem(
+            image=temporal_tensor,
+            mask=temporal_tensor,
+            filename=f'{video_info.memory_map.memmap_file}_{local_idx}',
+        )
+
+
 class STAEDataset(Dataset):
     def __init__(
         self,
