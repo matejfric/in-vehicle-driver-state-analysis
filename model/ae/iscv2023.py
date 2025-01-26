@@ -20,7 +20,7 @@ class ISVC23EncoderV1(Encoder):
         image_size: int = 128,
         n_time_steps: int = 2,
         n_lstm_neurons: int = 128,
-        latent_dim: int = 48,
+        latent_dim: int = 128,
         bidirectional: bool = True,
     ) -> None:
         """LSTM Encoder for Temporal Autoencoder. Input shape: `(batch_size, n_time_steps, n_image_channels, image_size, image_size)`"""
@@ -108,9 +108,8 @@ class ISVC23DecoderV1(Decoder):
         n_time_steps: int = 2,
         image_size: int = 256,
         n_image_channels: int = 1,
-        n_filters: int = 8,
         n_lstm_neurons: int = 128,
-        latent_dim: int = 48,
+        latent_dim: int = 128,
         bidirectional: bool = True,
     ) -> None:
         """LSTM Encoder for Temporal Autoencoder. Input shape: `(batch_size, n_time_steps, n_image_channels, image_size, image_size)`"""
@@ -220,7 +219,7 @@ class ISVC23EncoderV2(Encoder):
         self,
         image_size: int = 128,
         n_time_steps: int = 2,
-        latent_dim: int = 48,
+        latent_dim: int = 128,
     ) -> None:
         """LSTM Encoder for Temporal Autoencoder. Input shape: `(batch_size, n_time_steps, n_image_channels, image_size, image_size)`"""
         super(Encoder, self).__init__()
@@ -291,7 +290,7 @@ class ISVC23DecoderV2(Decoder):
         n_time_steps: int = 2,
         image_size: int = 256,
         n_image_channels: int = 1,
-        latent_dim: int = 48,
+        latent_dim: int = 128,
     ) -> None:
         """LSTM Encoder for Temporal Autoencoder. Input shape: `(batch_size, n_time_steps, n_image_channels, image_size, image_size)`"""
         super(Decoder, self).__init__()
@@ -401,7 +400,7 @@ class ISVC23EncoderV3(Encoder):
         self,
         image_size: int = 128,
         n_time_steps: int = 2,
-        latent_dim: int = 48,
+        latent_dim: int = 128,
         n_lstm_neurons: int = 128,
         bidirectional: bool = True,
     ) -> None:
@@ -440,7 +439,7 @@ class ISVC23DecoderV3(Decoder):
         n_time_steps: int = 2,
         image_size: int = 256,
         n_image_channels: int = 1,
-        latent_dim: int = 48,
+        latent_dim: int = 128,
         n_lstm_neurons: int = 128,
         bidirectional: bool = True,
     ) -> None:
@@ -495,7 +494,7 @@ class ISVC23EncoderV4(Encoder):
         self,
         image_size: int = 128,
         n_time_steps: int = 2,
-        latent_dim: int = 48,
+        latent_dim: int = 128,
     ) -> None:
         """LSTM Encoder for Temporal Autoencoder. Input shape: `(batch_size, n_time_steps, n_image_channels, image_size, image_size)`"""
         super(Encoder, self).__init__()
@@ -526,7 +525,7 @@ class ISVC23DecoderV4(Decoder):
         n_time_steps: int = 2,
         image_size: int = 256,
         n_image_channels: int = 1,
-        latent_dim: int = 48,
+        latent_dim: int = 128,
     ) -> None:
         """LSTM Encoder for Temporal Autoencoder. Input shape: `(batch_size, n_time_steps, n_image_channels, image_size, image_size)`"""
         super(Decoder, self).__init__()
