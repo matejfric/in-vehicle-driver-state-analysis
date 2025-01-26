@@ -1,7 +1,8 @@
 import json
 import shutil
+from functools import cache
 from pathlib import Path
-from typing import Final
+from typing import Final, Literal
 
 import cv2
 from tqdm import tqdm
@@ -11,14 +12,35 @@ CATEGORIES: Final[list[str]] = ['normal', 'anomal']
 DISTRACTIONS: Final[list[str]] = [
     'hands_using_wheel/only_right',
     'hands_using_wheel/only_left',
+    'hands_using_wheel/none',
     'driver_actions/radio',
     'driver_actions/drinking',
     'driver_actions/reach_side',
     'driver_actions/unclassified',
+    'driver_actions/hair_and_makeup',
+    'driver_actions/phonecall_right',
+    'driver_actions/phonecall_left',
+    'driver_actions/texting_left',
+    'driver_actions/texting_right',
 ]
+OTHER_ACTIONS: Final[list[str]] = [
+    'gaze_on_road/looking_road',
+    'gaze_on_road/not_looking_road',
+    'hands_using_wheel/both',
+    'talking/talking',
+    'driver_actions/talking_to_passenger',
+    'driver_actions/safe_drive',
+]
+SOURCE_TYPES: Final[list[str]] = ['rgb', 'depth']
 
 
-def setup_output_directories(
+@cache
+def _load_annotations(annotations_file_path: str | Path) -> dict:
+    with open(annotations_file_path) as f:
+        return json.load(f)
+
+
+def _setup_output_directories(
     base_dir: str | Path, force_overwrite: bool = False
 ) -> tuple[Path, Path]:
     """Setup output directories for normal and anomalous/distraction frames."""
@@ -39,11 +61,24 @@ def setup_output_directories(
     return normal_dir, anomaly_dir
 
 
+def _get_action_mapping(annotations_file_path: str | Path) -> dict[int, str]:
+    """Get action mapping from annotations file."""
+    annotations = _load_annotations(annotations_file_path)
+    actions = annotations['openlabel']['actions']
+    return {int(k): v['type'] for k, v in actions.items()}
+
+
+def _get_distraction_mapping(annotations_file_path: str | Path) -> dict[int, int]:
+    """Get distraction mapping from annotations file."""
+    actions = _get_action_mapping(annotations_file_path)
+    return {k: 1 if v in DISTRACTIONS else 0 for k, v in actions.items()}
+
+
 def extract_frames(
     input_video_path: str | Path,
-    annotations_file: str | Path,
-    distraction_mapping: dict,
-    output_base_dir: str | Path,
+    annotations_file_path: str | Path,
+    source_type: Literal['rgb', 'depth'],
+    output_base_dir: str | Path | None = None,
     target_size: tuple[int, int] | None = None,
     force_overwrite: bool = False,
 ) -> None:
@@ -54,14 +89,14 @@ def extract_frames(
     ----------
     input_video_path : str | Path
         Path to input video file
-    annotations_file : str | Path
+    annotations_file_path : str | Path
         Path to frame annotations in VCD OpenLABEL format (.json)
-    distraction_mapping : dict
-        Mapping of action keys to anomaly status
-    output_base_dir : str | Path
+    output_base_dir : str | Path | None
         Base directory for output frames
     target_size : tuple[int, int] | None
         Optional target size for output frames (width, height)
+    force_overwrite : bool
+        Whether to overwrite existing output directories
 
     Example
     -------
@@ -75,13 +110,26 @@ def extract_frames(
             force_overwrite=True,
         )
     """
+    if source_type not in SOURCE_TYPES:
+        raise ValueError(f'Invalid source type: {source_type}')
+
+    if output_base_dir is None:
+        output_base_dir = Path(input_video_path).parent
+
     # Load annotations
-    with open(annotations_file) as f:
-        annotations = json.load(f)
+    annotations = _load_annotations(annotations_file_path)
     frames_data = annotations['openlabel']['frames']
 
+    actions = _get_action_mapping(annotations_file_path)
+    known_actions = DISTRACTIONS + OTHER_ACTIONS
+    assert all(action in known_actions for action in actions.values()), (
+        f'Unknown actions found in annotations file: {actions.values()}'
+    )
+
+    distraction_mapping = _get_distraction_mapping(annotations_file_path)
+
     # Setup output directories
-    normal_dir, anomaly_dir = setup_output_directories(
+    normal_dir, anomaly_dir = _setup_output_directories(
         output_base_dir, force_overwrite=force_overwrite
     )
 
@@ -107,13 +155,12 @@ def extract_frames(
             if target_size is not None:
                 frame = cv2.resize(frame, target_size, interpolation=cv2.INTER_AREA)
 
-            # Check if current frame has annotations
             frame_key = str(frame_index)
             is_anomaly = False
-
             frame_annotations = frames_data[frame_key]
             for action_key, _ in frame_annotations['actions'].items():
                 if distraction_mapping[int(action_key)] == 1:
+                    # One of the annotated actions for the frame is a distraction
                     is_anomaly = True
                     break
 
@@ -121,7 +168,9 @@ def extract_frames(
             if previous_is_anomaly is None or is_anomaly != previous_is_anomaly:
                 current_sequence += 1
                 base_dir = anomaly_dir if is_anomaly else normal_dir
-                current_sequence_dir = base_dir / f'sequence_{current_sequence}' / 'rgb'
+                current_sequence_dir = (
+                    base_dir / f'sequence_{current_sequence}' / source_type
+                )
                 current_sequence_dir.mkdir(exist_ok=True, parents=True)
                 previous_is_anomaly = is_anomaly
 

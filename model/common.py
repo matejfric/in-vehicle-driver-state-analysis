@@ -8,6 +8,15 @@ from PIL import Image, ImageOps
 ModelStages: TypeAlias = Literal['train', 'valid', 'test']
 
 
+DRIVER_MAPPING: dict[str, int] = {
+    '2021_08_31_geordi_enyaq': 1,
+    '2021_11_18_jakubh_enyaq': 2,
+    '2021_11_05_michal_enyaq': 4,
+    '2021_09_06_poli_enyaq': 5,
+    '2021_11_18_dans_enyaq': 6,
+}
+
+
 class BatchSizeDict(TypedDict):
     train: int
     valid: int
