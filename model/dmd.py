@@ -2,10 +2,15 @@ import json
 import shutil
 from functools import cache
 from pathlib import Path
+from pprint import pprint
 from typing import Final, Literal
 
 import cv2
+import numpy as np
+from PIL import Image
 from tqdm import tqdm
+
+from model.common import pad_to_square
 
 ROOT: Final[Path] = Path.home() / 'source' / 'driver-dataset' / 'dmd'
 CATEGORIES: Final[list[str]] = ['normal', 'anomal']
@@ -185,3 +190,156 @@ def extract_frames(
 
     # Release resources
     cap.release()
+
+
+def _load_images_as_array(input_dir: str | Path, extension: str = 'jpg') -> np.ndarray:
+    """Load images from directory as a NumPy array."""
+    input_dir = Path(input_dir)
+    image_files = sorted(input_dir.glob(f'*.{extension}'), key=lambda p: p.stem)
+    images = [np.array(Image.open(img)) for img in image_files]
+    return np.stack(images, axis=0)
+
+
+def convert_depth_images_to_video(
+    session: str,
+    category: Literal['normal', 'anomal'],
+    sequence: int,
+    directory: str = 'depth',
+    fps: int = 10,
+    extension: str = 'jpg',
+) -> None:
+    from .depth_anything.utils.dc_utils import save_video
+
+    path = ROOT / session / category / f'sequence_{sequence}' / directory
+    if not path.exists():
+        raise ValueError(f'Directory not found: {path}')
+    frames = _load_images_as_array(path, extension=extension)
+    save_video(frames, path / 'video_depth.mp4', fps=fps, is_depths=True)
+
+
+def convert_frames_to_video(
+    session: str,
+    source_type: Literal['rgb', 'depth'],
+    preset: Literal[
+        'ultrafast',
+        'superfast',
+        'veryfast',
+        'faster',
+        'fast',
+        'medium',
+        'slow',
+        'slower',
+        'veryslow',
+    ] = 'medium',
+    crf: int = 0,
+    crop_driver: bool = True,
+    resize: tuple[int, int] = (518, 518),
+    extension: str = 'jpg',
+) -> None:
+    """Convert extracted frames to video. Assumes that function `extract_frames` has been called."""
+    from sam2util import convert_jpg_to_mp4
+
+    base_dir = ROOT / session
+    if not base_dir.exists():
+        raise ValueError(f'Session directory not found: {base_dir}')
+
+    all_sequences = sorted([p for p in base_dir.rglob(source_type) if p.is_dir()])
+    pprint(all_sequences)
+
+    output_help_dir = f'crop_{source_type}'
+
+    for seq_dir in (pbar := tqdm(all_sequences)):
+        pbar.set_postfix_str(seq_dir.parent.name)
+
+        source_dir = seq_dir
+        if crop_driver:
+            source_dir = seq_dir.parent / output_help_dir
+            source_dir.mkdir(exist_ok=True, parents=True)
+            for img_file in seq_dir.glob(f'*.{extension}'):
+                img = Image.open(img_file)
+                img = pad_to_square(img).resize(resize)
+                img.save(source_dir / img_file.name)
+
+        output_file = source_dir / 'video.mp4'
+        convert_jpg_to_mp4(
+            image_folder=source_dir,
+            output_video_path=output_file,
+            preset=preset,
+            crf=crf,
+        )
+
+
+def _export_depth_frames(
+    output_dir: str | Path, depth_frames: np.ndarray, filenames: list[Path]
+) -> None:
+    """Export depth frames to output directory."""
+    output_dir = Path(output_dir)
+    output_dir.mkdir(exist_ok=True, parents=True)
+
+    # Normalize to 0-255 range
+    d_min = depth_frames.min()
+    d_max = depth_frames.max()
+    depth_frames = (depth_frames - d_min) / (d_max - d_min) * 255
+    depth_frames = depth_frames.astype(np.uint8)
+
+    # Save each frame as a PNG
+    for i in range(depth_frames.shape[0]):
+        img = Image.fromarray(depth_frames[i])
+        img.save(output_dir / f'{i:06d}.png')
+
+
+def convert_video_to_depth(
+    session: str,
+    encoder: Literal['vits', 'vitl'] = 'vits',
+    source_type: str = 'crop_rgb',
+    source_extension='jpg',
+    checkpoint_dir: str | Path = 'model/depth_anything/checkpoints',
+) -> None:
+    """Convert RGB video to depth video using Video-Depth-Anything model."""
+    import torch
+
+    from .depth_anything.utils.dc_utils import read_video_frames, save_video
+    from .depth_anything.video_depth_anything.video_depth import (
+        VideoDepthAnything,
+    )
+
+    base_dir = ROOT / session
+    if not base_dir.exists():
+        raise ValueError(f'Session directory not found: {base_dir}')
+
+    all_sequences = sorted([p for p in base_dir.rglob(source_type) if p.is_dir()])
+    pprint(all_sequences)
+
+    model_config = {
+        'encoder': 'vits',
+        'features': 64,
+        'out_channels': [48, 96, 192, 384],
+    }
+    device = 'cuda' if torch.cuda.is_available() else 'cpu'
+    video_depth_anything = VideoDepthAnything(**model_config)
+    video_depth_anything.load_state_dict(
+        torch.load(
+            Path(checkpoint_dir) / f'video_depth_anything_{encoder}.pth',
+            map_location='cpu',
+        ),
+        strict=True,
+    )
+    video_depth_anything = video_depth_anything.to(device).eval()
+
+    for seq_dir in (pbar := tqdm(all_sequences)):
+        pbar.set_postfix_str(seq_dir.parent.name)
+
+        frames, target_fps = read_video_frames(str(seq_dir / 'video.mp4'), -1, -1, -1)
+        depths, fps = video_depth_anything.infer_video_depth(
+            frames, target_fps, device=device
+        )
+        output_dir = seq_dir.parent / 'video_depth_anything'
+        _export_depth_frames(
+            output_dir, depths, filenames=sorted(seq_dir.glob(f'*.{source_extension}'))
+        )
+        save_video(
+            depths,
+            str(output_dir / 'video_depth_anything.mp4'),
+            fps=fps,
+            is_depths=True,
+        )
