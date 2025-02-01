@@ -1,3 +1,4 @@
+import logging
 from pathlib import Path
 from pprint import pprint
 from typing import Literal
@@ -5,6 +6,8 @@ from typing import Literal
 import numpy as np
 from PIL import Image
 from tqdm import tqdm
+
+logger = logging.getLogger(__name__)
 
 
 def _export_depth_frames(
@@ -31,7 +34,9 @@ def convert_video_to_depth(
     encoder: Literal['vits', 'vitl'] = 'vits',
     source_type: str = 'crop_rgb',
     source_extension: str = 'jpg',
+    source_video_extension: str = 'mp4',
     checkpoint_dir: str | Path = 'model/depth_anything/checkpoints',
+    input_size: int = 518,
 ) -> None:
     """Convert RGB videos to depth maps using Video-Depth-Anything model."""
     import torch
@@ -66,10 +71,16 @@ def convert_video_to_depth(
 
     for seq_dir in (pbar := tqdm(all_sequences)):
         pbar.set_postfix_str(seq_dir.parent.name)
+        videos = sorted(seq_dir.glob(f'*.{source_video_extension}'))
+        if not videos:
+            logger.warning(f'No videos found in {seq_dir}')
+            continue
+        if len(videos) > 1:
+            logger.warning(f'Multiple videos found in {seq_dir}, using the first one')
 
-        frames, target_fps = read_video_frames(str(seq_dir / 'video.mp4'), -1, -1, -1)
+        frames, target_fps = read_video_frames(str(seq_dir / videos[0]), -1, -1, -1)
         depths, fps = video_depth_anything.infer_video_depth(
-            frames, target_fps, device=device
+            frames, target_fps, device=device, input_size=input_size
         )
         output_dir = seq_dir.parent / 'video_depth_anything'
         _export_depth_frames(
