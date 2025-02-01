@@ -237,7 +237,7 @@ def convert_frames_to_video(
     extension: str = 'jpg',
 ) -> None:
     """Convert extracted frames to video. Assumes that function `extract_frames` has been called."""
-    from sam2util import convert_jpg_to_mp4
+    from sam2util import convert_images_to_mp4
 
     base_dir = ROOT / session
     if not base_dir.exists():
@@ -261,7 +261,7 @@ def convert_frames_to_video(
                 img.save(source_dir / img_file.name)
 
         output_file = source_dir / 'video.mp4'
-        convert_jpg_to_mp4(
+        convert_images_to_mp4(
             image_folder=source_dir,
             output_video_path=output_file,
             preset=preset,
@@ -285,14 +285,14 @@ def _export_depth_frames(
     # Save each frame as a PNG
     for i in range(depth_frames.shape[0]):
         img = Image.fromarray(depth_frames[i])
-        img.save(output_dir / f'{i:06d}.png')
+        img.save(output_dir / f'{filenames[i].stem}.png')
 
 
 def convert_video_to_depth(
     session: str,
     encoder: Literal['vits', 'vitl'] = 'vits',
     source_type: str = 'crop_rgb',
-    source_extension='jpg',
+    source_extension: str = 'jpg',
     checkpoint_dir: str | Path = 'model/depth_anything/checkpoints',
 ) -> None:
     """Convert RGB video to depth video using Video-Depth-Anything model."""
