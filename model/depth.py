@@ -37,6 +37,8 @@ def convert_video_to_depth(
     source_video_extension: str = 'mp4',
     checkpoint_dir: str | Path = 'model/depth_anything/checkpoints',
     input_size: int = 518,
+    use_parent_dir: bool = False,
+    save_visualization: bool = True,
 ) -> None:
     """Convert RGB videos to depth maps using Video-Depth-Anything model."""
     import torch
@@ -50,11 +52,11 @@ def convert_video_to_depth(
     if not base_directory.exists():
         raise ValueError(f'Session directory not found: {base_directory}')
 
-    all_sequences = sorted([p for p in base_directory.rglob(source_type) if p.is_dir()])
+    all_sequences = sorted([p for p in base_directory.rglob(f'*/{source_type}')])
     pprint(all_sequences)
 
     model_config = {
-        'encoder': 'vits',
+        'encoder': encoder,
         'features': 64,
         'out_channels': [48, 96, 192, 384],
     }
@@ -70,25 +72,41 @@ def convert_video_to_depth(
     video_depth_anything = video_depth_anything.to(device).eval()
 
     for seq_dir in (pbar := tqdm(all_sequences)):
-        pbar.set_postfix_str(seq_dir.parent.name)
         videos = sorted(seq_dir.glob(f'*.{source_video_extension}'))
         if not videos:
             logger.warning(f'No videos found in {seq_dir}')
             continue
-        if len(videos) > 1:
-            logger.warning(f'Multiple videos found in {seq_dir}, using the first one')
 
-        frames, target_fps = read_video_frames(str(seq_dir / videos[0]), -1, -1, -1)
-        depths, fps = video_depth_anything.infer_video_depth(
-            frames, target_fps, device=device, input_size=input_size
-        )
-        output_dir = seq_dir.parent / 'video_depth_anything'
-        _export_depth_frames(
-            output_dir, depths, filenames=sorted(seq_dir.glob(f'*.{source_extension}'))
-        )
-        save_video(
-            depths,
-            str(output_dir / 'video_depth_anything.mp4'),
-            fps=fps,
-            is_depths=True,
-        )
+        current_frame = 0
+        for i, video in enumerate(videos):
+            pbar.set_postfix_str(str(video))
+            frames, target_fps = read_video_frames(str(seq_dir / video), -1, -1, -1)
+            depths, fps = video_depth_anything.infer_video_depth(
+                frames, target_fps, device=device, input_size=input_size
+            )
+            output_dir = (
+                seq_dir.parent.parent if use_parent_dir else seq_dir.parent
+            ) / 'video_depth_anything'
+            _export_depth_frames(
+                output_dir,
+                depths,
+                filenames=sorted(
+                    (seq_dir.parent if use_parent_dir else seq_dir).glob(
+                        f'*.{source_extension}'
+                    )
+                )[current_frame : current_frame + len(depths)],
+            )
+            if save_visualization:
+                visu_name = 'video_depth_anything'
+                output_file_name = (
+                    f'{visu_name}_{i:03d}.mp4'
+                    if len(videos) > 1
+                    else f'{visu_name}.mp4'
+                )
+                save_video(
+                    depths,
+                    str(output_dir / output_file_name),
+                    fps=fps,
+                    is_depths=True,
+                )
+            current_frame += len(depths)
