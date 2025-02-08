@@ -247,7 +247,7 @@ class VideoInfo:
 class TemporalAutoencoderDatasetDMD(Dataset):
     def __init__(
         self,
-        dataset_dir: Path | str,
+        dataset_directories: Path | str | list[str | Path],
         memory_map_image_shape: tuple[int, int] = (256, 256),
         window_size: int = 4,
         time_step: int = 1,
@@ -282,7 +282,11 @@ class TemporalAutoencoderDatasetDMD(Dataset):
         input_transforms : albu.Compose, default=None
             Compose object with albumentations transforms to apply to the input image only.
         """
-        self.dataset_dir = Path(dataset_dir)
+        self.dataset_directories = (
+            [Path(directory) for directory in dataset_directories]
+            if isinstance(dataset_directories, list)
+            else [Path(dataset_directories)]
+        )
         self.window_size = window_size
         self.time_step = time_step
         self.time_dim_index = time_dim_index
@@ -292,10 +296,14 @@ class TemporalAutoencoderDatasetDMD(Dataset):
 
         # Load all memory map files and calculate cumulative indices
         self.video_files = sorted(
-            self.dataset_dir.rglob(f'{source_type}?{memory_map_image_shape[0]}.dat')
+            video_file
+            for directory in self.dataset_directories
+            for video_file in directory.rglob(
+                f'{source_type}?{memory_map_image_shape[0]}.dat'
+            )
         )
         if not self.video_files:
-            raise ValueError(f'No .dat files found in {dataset_dir}')
+            raise ValueError(f'No .dat files found in {dataset_directories}')
 
         self.videos: list[VideoInfo] = []
         current_idx = 0

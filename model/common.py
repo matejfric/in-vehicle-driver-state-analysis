@@ -1,9 +1,12 @@
-from collections.abc import Iterator
+import logging
+from collections.abc import Iterator, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal, TypeAlias, TypedDict
 
 from PIL import Image, ImageOps
+
+logger = logging.getLogger(__name__)
 
 ModelStages: TypeAlias = Literal['train', 'valid', 'test']
 
@@ -80,8 +83,10 @@ class Anomalies:
         return iter(self.anomalies)
 
     @staticmethod
-    def from_json(path: str | Path) -> 'Anomalies':
-        """Create an Anomalies instance from a JSON annotation file in VCD format.
+    def from_json(
+        path: str | Path | Sequence[str | Path],
+    ) -> 'Anomalies':
+        """Create an Anomalies instance from a JSON annotation file(s) in VCD format.
 
         Note
         ----
@@ -91,23 +96,31 @@ class Anomalies:
 
         from model.dmd import DISTRACTIONS
 
-        with open(path) as f:
-            annotations = json.load(f)
-
-        video_length = annotations['openlabel']['frame_intervals'][0]['frame_end']
-        actions = annotations['openlabel']['actions']
-
         anomalies = []
-        for value in actions.values():
-            if (label := value['type']) in DISTRACTIONS:
-                for frame_interval in value['frame_intervals']:
-                    anomalies.append(
-                        Anomaly(
-                            start=frame_interval['frame_start'],
-                            end=frame_interval['frame_end'],
-                            labels=[label],
+        video_length = 0
+        paths = [path] if isinstance(path, str | Path) else sorted(path)
+
+        logger.info(f'Loading annotations from {len(paths)} files.')
+
+        for path in paths:
+            with open(path) as f:
+                annotations = json.load(f)
+
+            actions = annotations['openlabel']['actions']
+
+            for value in actions.values():
+                if (label := value['type']) in DISTRACTIONS:
+                    for frame_interval in value['frame_intervals']:
+                        anomalies.append(
+                            Anomaly(
+                                start=video_length + frame_interval['frame_start'],
+                                end=video_length + frame_interval['frame_end'],
+                                labels=[label],
+                            )
                         )
-                    )
+
+            video_length += annotations['openlabel']['frame_intervals'][0]['frame_end']
+
         return Anomalies(anomalies=anomalies, video_length=video_length)
 
     @staticmethod

@@ -80,8 +80,8 @@ def main(args: argparse.Namespace) -> None:
 if __name__ == '__main__':
     # Example usage:
     # conda activate torch
-    # $CONDA_PREFIX/bin/python3 run_memory_map_conversion_dmd.py --session "gA_1_s1_2019-03-08T09;31;15+01;00_rgb_body" --resize 128 --type depth --stage test
-    # $CONDA_PREFIX/bin/python3 run_memory_map_conversion_dmd.py --session "gA_1_s1_2019-03-08T09;31;15+01;00_rgb_body" --resize 128 --type video_depth_anything
+    # $CONDA_PREFIX/bin/python3 run_memory_map_conversion_dmd.py --session "gA_1_s1_2019-03-08T09;31;15+01;00" --resize 128 --type depth --stage test
+    # $CONDA_PREFIX/bin/python3 run_memory_map_conversion_dmd.py --session "gA_1_s2_2019-03-08T09;21;03+01;00" --resize 128 --type video_depth_anything
     parser = argparse.ArgumentParser(
         description='Process images into a memory-mapped file.',
         usage='python3 run_memory_map_conversion.py --path <path> [--output <output>] [--resize <resize>] [--extension <extension>]',
