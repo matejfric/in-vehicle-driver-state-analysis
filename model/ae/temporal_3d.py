@@ -31,7 +31,7 @@ class STAELoss(nn.Module):
         reconstructed: torch.Tensor,
         future_predictions: torch.Tensor,
         future_targets: torch.Tensor,
-        model_parameters: list[torch.Tensor],
+        model_parameters: list[torch.Tensor] | None = None,
     ) -> STAELosses:
         """The tensors have shape `(batch_size, channels, temporal_dim, height, width)`"""
 
@@ -51,7 +51,11 @@ class STAELoss(nn.Module):
         L_pred = (weights * prediction_errors.mean(dim=0)).sum()
 
         # Regularization term
-        L_reg = sum(param.norm(2) for param in model_parameters)
+        L_reg = (
+            sum(param.norm(2) for param in model_parameters)
+            if model_parameters
+            else 0.0
+        )
 
         # Combined loss
         total_loss = L_recon + L_pred + self.lambda_reg * L_reg
@@ -72,6 +76,7 @@ class STAEModel(L.LightningModule):
         eps: float = 1e-07,  # Adam default is 1e-8
         lambda_reg: float = 1e-4,
         use_2d_bottleneck: bool = False,
+        regularization: Literal['l2_model_weights', 'l2_encoder_weights'] | None = None,
         **kwargs: dict[Any, Any],
     ) -> None:
         """Temporal autoencoder model.
@@ -112,6 +117,7 @@ class STAEModel(L.LightningModule):
         self.eps = eps
         self.time_dim_index = time_dim_index
         self.lambda_reg = lambda_reg
+        self.regularization = regularization
 
         self.loss_function = STAELoss(lambda_reg)
         self.metrics_ = dict(
@@ -136,8 +142,16 @@ class STAEModel(L.LightningModule):
         expected_outputs = images.clone()
         reconstructed, predicted = self.forward(images)
 
+        match self.regularization:
+            case None:
+                regularization = None
+            case 'l2_encoder_weights':
+                regularization = self.encoder.parameters()
+            case 'l2_model_weights':
+                regularization = self.parameters()
+
         losses = self.loss_function(
-            expected_outputs, reconstructed, predicted, future_images, self.parameters()
+            expected_outputs, reconstructed, predicted, future_images, regularization
         )
 
         # The tensors have shape `(batch_size, channels, temporal_dim, height, width)`
