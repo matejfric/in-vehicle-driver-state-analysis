@@ -71,6 +71,7 @@ class STAEModel(L.LightningModule):
         time_dim_index: Literal[2] = 2,
         eps: float = 1e-07,  # Adam default is 1e-8
         lambda_reg: float = 1e-4,
+        use_2d_bottleneck: bool = False,
         **kwargs: dict[Any, Any],
     ) -> None:
         """Temporal autoencoder model.
@@ -101,9 +102,11 @@ class STAEModel(L.LightningModule):
         super().__init__(**kwargs)
         self.save_hyperparameters(ignore=['encoder', 'decoder'])
 
-        self.encoder = Conv3dEncoder()
-        self.decoder = Conv3dDecoder()
-        self.predictor = Conv3dDecoder()  # Decoder is the same as the predictor
+        self.encoder = Conv3dEncoder(use_2d_bottleneck=use_2d_bottleneck)
+        self.decoder = Conv3dDecoder(use_2d_bottleneck=use_2d_bottleneck)
+        # Decoder is the same as the predictor
+        self.predictor = Conv3dDecoder(use_2d_bottleneck=use_2d_bottleneck)
+
         self.batch_size_dict = batch_size_dict
         self.lr = learning_rate
         self.eps = eps
@@ -213,6 +216,22 @@ class Conv3dEncodeBlock(nn.Module):
         return x
 
 
+class Conv2dEncodeBlock(nn.Module):
+    def __init__(self, out_channels: int) -> None:
+        super().__init__()
+        self.conv = nn.LazyConv2d(out_channels, kernel_size=3, padding=1, bias=True)
+        self.bn = nn.BatchNorm2d(out_channels)
+        self.relu = nn.LeakyReLU()  # nn.ReLU()
+        self.pool = nn.MaxPool2d(2)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        x = self.conv(x)
+        x = self.bn(x)
+        x = self.relu(x)
+        x = self.pool(x)
+        return x
+
+
 class Conv3dDecodeBlock(nn.Module):
     def __init__(self, out_channels: int) -> None:
         super().__init__()
@@ -234,33 +253,65 @@ class Conv3dDecodeBlock(nn.Module):
         return x
 
 
+class Conv2dDecodeBlock(nn.Module):
+    def __init__(self, out_channels: int) -> None:
+        super().__init__()
+        self.deconv = nn.LazyConvTranspose2d(
+            out_channels,
+            kernel_size=3,
+            stride=2,
+            padding=1,
+            output_padding=1,
+            bias=True,
+        )
+        self.bn = nn.BatchNorm2d(out_channels)
+        self.relu = nn.LeakyReLU()  # nn.ReLU()
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        x = self.deconv(x)
+        x = self.bn(x)
+        x = self.relu(x)
+        return x
+
+
 class Conv3dEncoder(Encoder):
     def __init__(
         self,
+        use_2d_bottleneck: bool = False,
     ) -> None:
         """LSTM Encoder for Temporal Autoencoder. Input shape: `(batch_size, n_time_steps, n_image_channels, image_size, image_size)`"""
         super(Encoder, self).__init__()
+
+        self.use_2d_bottleneck = use_2d_bottleneck
 
         self.conv1 = Conv3dEncodeBlock(32)
         self.conv2 = Conv3dEncodeBlock(48)
         self.conv3 = Conv3dEncodeBlock(64)
         self.conv4 = Conv3dEncodeBlock(64)
+        self.conv5 = Conv2dEncodeBlock(64)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         x = self.conv1(x)
         x = self.conv2(x)
         x = self.conv3(x)
         x = self.conv4(x)
+        if self.use_2d_bottleneck:
+            x = x.squeeze(2)
+            x = self.conv5(x)
         return x
 
 
 class Conv3dDecoder(Decoder):
     def __init__(
         self,
+        use_2d_bottleneck: bool = False,
     ) -> None:
         """LSTM Encoder for Temporal Autoencoder. Input shape: `(batch_size, n_time_steps, n_image_channels, image_size, image_size)`"""
         super(Decoder, self).__init__()
 
+        self.use_2d_bottleneck = use_2d_bottleneck
+
+        self.deconv0 = Conv2dDecodeBlock(64)  # number of filters???
         self.deconv1 = Conv3dDecodeBlock(64)
         self.deconv2 = Conv3dDecodeBlock(48)
         self.deconv3 = Conv3dDecodeBlock(32)
@@ -269,6 +320,9 @@ class Conv3dDecoder(Decoder):
         self.sigmoid = nn.Sigmoid()
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
+        if self.use_2d_bottleneck:
+            x = self.deconv0(x)
+            x = x.unsqueeze(2)
         x = self.deconv1(x)
         x = self.deconv2(x)
         x = self.deconv3(x)
