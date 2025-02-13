@@ -75,8 +75,8 @@ class STAEModel(L.LightningModule):
         time_dim_index: Literal[2] = 2,
         eps: float = 1e-07,  # Adam default is 1e-8
         lambda_reg: float = 1e-4,
-        use_2d_bottleneck: bool = False,
         regularization: Literal['l2_model_weights', 'l2_encoder_weights'] | None = None,
+        use_2d_bottleneck: list[int] | None = None,
         **kwargs: dict[Any, Any],
     ) -> None:
         """Temporal autoencoder model.
@@ -102,15 +102,25 @@ class STAEModel(L.LightningModule):
             Standard deviation of the Gaussian noise added to the input image.
         train_noise_std_latent: float, default=0.0
             Standard deviation of the Gaussian noise added to the latent space representation.
+        lambda_reg : float, default=1e-4
+            Regularization parameter.
+        regularization : {'l2_model_weights', 'l2_encoder_weights'}, default=None
+            Regularization type. If `None`, no regularization is applied.
+        use_2d_bottleneck : list[int], default=None
+            List of number of output channels for the 2D bottleneck layers. The list is reversed
+            for the decoder. For example, if `use_2d_bottleneck=[64, 128]`, the encoder will have
+            two 2D bottleneck layers with 64 and 128 output channels, respectively, and the decoder
+            will have two 2D deconvolution layers with 128 and 64 output channels, respectively.
         kwargs : dict
         """
         super().__init__(**kwargs)
         self.save_hyperparameters(ignore=['encoder', 'decoder'])
 
         self.encoder = Conv3dEncoder(use_2d_bottleneck=use_2d_bottleneck)
-        self.decoder = Conv3dDecoder(use_2d_bottleneck=use_2d_bottleneck)
+        reversed_2d_bottleneck = use_2d_bottleneck[::-1] if use_2d_bottleneck else None
+        self.decoder = Conv3dDecoder(use_2d_bottleneck=reversed_2d_bottleneck)
         # Decoder is the same as the predictor
-        self.predictor = Conv3dDecoder(use_2d_bottleneck=use_2d_bottleneck)
+        self.predictor = Conv3dDecoder(use_2d_bottleneck=reversed_2d_bottleneck)
 
         self.batch_size_dict = batch_size_dict
         self.lr = learning_rate
@@ -291,18 +301,21 @@ class Conv2dDecodeBlock(nn.Module):
 class Conv3dEncoder(Encoder):
     def __init__(
         self,
-        use_2d_bottleneck: bool = False,
+        use_2d_bottleneck: list[int] | None = None,
     ) -> None:
         """LSTM Encoder for Temporal Autoencoder. Input shape: `(batch_size, n_time_steps, n_image_channels, image_size, image_size)`"""
         super(Encoder, self).__init__()
 
         self.use_2d_bottleneck = use_2d_bottleneck
+        if use_2d_bottleneck:
+            self.conv2d_layers = nn.ModuleList()
+            for out_channels in use_2d_bottleneck:
+                self.conv2d_layers.append(Conv2dEncodeBlock(out_channels))
 
         self.conv1 = Conv3dEncodeBlock(32)
         self.conv2 = Conv3dEncodeBlock(48)
         self.conv3 = Conv3dEncodeBlock(64)
         self.conv4 = Conv3dEncodeBlock(64)
-        self.conv5 = Conv2dEncodeBlock(64)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         x = self.conv1(x)
@@ -311,21 +324,25 @@ class Conv3dEncoder(Encoder):
         x = self.conv4(x)
         if self.use_2d_bottleneck:
             x = x.squeeze(2)
-            x = self.conv5(x)
+            for conv2d in self.conv2d_layers:
+                x = conv2d(x)
         return x
 
 
 class Conv3dDecoder(Decoder):
     def __init__(
         self,
-        use_2d_bottleneck: bool = False,
+        use_2d_bottleneck: list[int] | None = None,
     ) -> None:
         """LSTM Encoder for Temporal Autoencoder. Input shape: `(batch_size, n_time_steps, n_image_channels, image_size, image_size)`"""
         super(Decoder, self).__init__()
 
         self.use_2d_bottleneck = use_2d_bottleneck
+        if use_2d_bottleneck:
+            self.deconv2d_layers = nn.ModuleList()
+            for out_channels in use_2d_bottleneck:
+                self.deconv2d_layers.append(Conv2dDecodeBlock(out_channels))
 
-        self.deconv0 = Conv2dDecodeBlock(64)  # number of filters???
         self.deconv1 = Conv3dDecodeBlock(64)
         self.deconv2 = Conv3dDecodeBlock(48)
         self.deconv3 = Conv3dDecodeBlock(32)
@@ -335,7 +352,8 @@ class Conv3dDecoder(Decoder):
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         if self.use_2d_bottleneck:
-            x = self.deconv0(x)
+            for deconv2d in self.deconv2d_layers:
+                x = deconv2d(x)
             x = x.unsqueeze(2)
         x = self.deconv1(x)
         x = self.deconv2(x)
