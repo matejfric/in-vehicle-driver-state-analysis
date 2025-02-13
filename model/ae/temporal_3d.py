@@ -29,7 +29,7 @@ class STAELoss(nn.Module):
         self,
         inputs: torch.Tensor,
         reconstructed: torch.Tensor,
-        future_predictions: torch.Tensor,
+        future_predictions: torch.Tensor | None,
         future_targets: torch.Tensor,
         model_parameters: list[torch.Tensor] | None = None,
     ) -> STAELosses:
@@ -39,16 +39,19 @@ class STAELoss(nn.Module):
         L_recon = self.reconstruction_loss(inputs, reconstructed)
 
         # Prediction loss with weight-decreasing factor
-        T = future_targets.size(self.time_dim_index)  # Number of future frames
-        weights = torch.arange(  # e.g., [4, 3, 2, 1] for T=4
-            T, 0, -1, dtype=torch.float32, device=future_targets.device
-        )
-        weights /= weights.sum()  # Normalize weights
-        prediction_errors = ((future_predictions - future_targets) ** 2).mean(
-            dim=[1, 3, 4]  # Mean over spatial dimensions
-        )
-        # Mean over the batch dimension and multiply by the weights
-        L_pred = (weights * prediction_errors.mean(dim=0)).sum()
+        if future_predictions:
+            T = future_targets.size(self.time_dim_index)  # Number of future frames
+            weights = torch.arange(  # e.g., [4, 3, 2, 1] for T=4
+                T, 0, -1, dtype=torch.float32, device=future_targets.device
+            )
+            weights /= weights.sum()  # Normalize weights
+            prediction_errors = ((future_predictions - future_targets) ** 2).mean(
+                dim=[1, 3, 4]  # Mean over spatial dimensions
+            )
+            # Mean over the batch dimension and multiply by the weights
+            L_pred = (weights * prediction_errors.mean(dim=0)).sum()
+        else:
+            L_pred = torch.tensor(0.0, device=future_targets.device)
 
         # Regularization term
         L_reg = (
@@ -77,6 +80,7 @@ class STAEModel(L.LightningModule):
         lambda_reg: float = 1e-4,
         regularization: Literal['l2_model_weights', 'l2_encoder_weights'] | None = None,
         use_2d_bottleneck: list[int] | None = None,
+        use_prediction_branch: bool = True,
         **kwargs: dict[Any, Any],
     ) -> None:
         """Temporal autoencoder model.
@@ -120,7 +124,11 @@ class STAEModel(L.LightningModule):
         reversed_2d_bottleneck = use_2d_bottleneck[::-1] if use_2d_bottleneck else None
         self.decoder = Conv3dDecoder(use_2d_bottleneck=reversed_2d_bottleneck)
         # Decoder is the same as the predictor
-        self.predictor = Conv3dDecoder(use_2d_bottleneck=reversed_2d_bottleneck)
+        self.predictor = (
+            Conv3dDecoder(use_2d_bottleneck=reversed_2d_bottleneck)
+            if use_prediction_branch
+            else None
+        )
 
         self.batch_size_dict = batch_size_dict
         self.lr = learning_rate
@@ -136,11 +144,11 @@ class STAEModel(L.LightningModule):
             fro=lambda x, y: torch.norm(x - y, dim=1, p='fro'),
         )
 
-    def forward(self, x: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
+    def forward(self, x: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor | None]:
         """Forward pass."""
         encoded = self.encoder(x)
         reconstructed = self.decoder(encoded)
-        predicted = self.predictor(encoded)
+        predicted = self.predictor(encoded) if self.predictor else None
 
         return reconstructed, predicted
 
