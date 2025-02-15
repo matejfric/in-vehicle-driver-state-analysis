@@ -27,6 +27,7 @@ DISTRACTIONS: Final[list[str]] = [
     'driver_actions/phonecall_left',
     'driver_actions/texting_left',
     'driver_actions/texting_right',
+    'driver_actions/reach_backseat',
 ]
 OTHER_ACTIONS: Final[list[str]] = [
     'gaze_on_road/looking_road',
@@ -46,12 +47,17 @@ def _load_annotations(annotations_file_path: str | Path) -> dict:
 
 
 def _setup_output_directories(
-    base_dir: str | Path, force_overwrite: bool = False
+    base_dir: str | Path,
+    force_overwrite: bool = False,
+    skip_output_directory_setup: bool = False,
 ) -> tuple[Path, Path]:
     """Setup output directories for normal and anomalous/distraction frames."""
     base_dir = Path(base_dir)
     normal_dir = base_dir / 'normal'
     anomaly_dir = base_dir / 'anomal'
+
+    if skip_output_directory_setup:
+        return normal_dir, anomaly_dir
 
     # Clean existing directories if they exist
     for dir_path in [normal_dir, anomaly_dir]:
@@ -86,6 +92,8 @@ def extract_frames(
     output_base_dir: str | Path | None = None,
     target_size: tuple[int, int] | None = None,
     force_overwrite: bool = False,
+    depth_threshold: int = 2000,
+    skip_output_directory_setup: bool = False,
 ) -> None:
     """
     Extract frames from video and save them to appropriate directories based on anomaly status.
@@ -102,6 +110,8 @@ def extract_frames(
         Optional target size for output frames (width, height)
     force_overwrite : bool
         Whether to overwrite existing output directories
+    depth_threshold : int
+        Depth threshold for depth videos in millimeters. Values above this threshold will be clipped.
 
     Example
     -------
@@ -128,20 +138,36 @@ def extract_frames(
     actions = _get_action_mapping(annotations_file_path)
     known_actions = DISTRACTIONS + OTHER_ACTIONS
     assert all(action in known_actions for action in actions.values()), (
-        f'Unknown actions found in annotations file: {actions.values()}'
+        f'Unknown actions found in annotations file: {set(actions.values()) - set(known_actions)}'
     )
 
     distraction_mapping = _get_distraction_mapping(annotations_file_path)
 
     # Setup output directories
     normal_dir, anomaly_dir = _setup_output_directories(
-        output_base_dir, force_overwrite=force_overwrite
+        output_base_dir,
+        force_overwrite=force_overwrite,
+        skip_output_directory_setup=skip_output_directory_setup,
     )
+
+    def preprocess_depth_frame(frame: np.ndarray) -> np.ndarray:
+        """Preprocess depth frame."""
+        frame_clipped = np.clip(frame, 0, depth_threshold)
+        # Map the range [0, depth_threshold] to [0, 255]
+        img8 = ((frame_clipped / depth_threshold) * 255).astype(np.uint8)
+        return np.asarray(pad_to_square(Image.fromarray(img8)))
 
     # Initialize video capture
     cap = cv2.VideoCapture(str(input_video_path))
     if not cap.isOpened():
         raise ValueError(f'Failed to open video file: {input_video_path}')
+
+    if source_type == 'depth':
+        # Disable RGB conversion for depth videos
+        cap.set(cv2.CAP_PROP_CONVERT_RGB, 0)
+        export_extension = 'png'
+    else:
+        export_extension = 'jpg'
 
     # Track current sequence
     current_sequence = 0
@@ -155,6 +181,12 @@ def extract_frames(
             ret, frame = cap.read()
             if not ret:
                 break
+
+            if source_type == 'depth':
+                frame = preprocess_depth_frame(frame)
+                target_dir = 'source_depth'
+            else:
+                target_dir = source_type
 
             # Resize frame if target size is specified
             if target_size is not None:
@@ -174,7 +206,7 @@ def extract_frames(
                 current_sequence += 1
                 base_dir = anomaly_dir if is_anomaly else normal_dir
                 current_sequence_dir = (
-                    base_dir / f'sequence_{current_sequence}' / source_type
+                    base_dir / f'sequence_{current_sequence}' / target_dir
                 )
                 current_sequence_dir.mkdir(exist_ok=True, parents=True)
                 previous_is_anomaly = is_anomaly
@@ -182,7 +214,9 @@ def extract_frames(
             # Save frame
             if current_sequence_dir is not None:
                 pbar.set_postfix_str(f'Sequence: {current_sequence}')
-                frame_path = current_sequence_dir / f'{frame_index:06d}.jpg'
+                frame_path = (
+                    current_sequence_dir / f'{frame_index:06d}.{export_extension}'
+                )
                 cv2.imwrite(str(frame_path), frame)
 
             frame_index += 1
