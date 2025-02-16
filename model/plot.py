@@ -1,4 +1,5 @@
 import random
+from collections.abc import Sequence
 from pathlib import Path
 from typing import Literal
 
@@ -615,6 +616,38 @@ def plot_learning_curves(
         a.set_xlabel('Epoch')
 
     plt.tight_layout()
+
+    if save_path:
+        plt.savefig(save_path)
+
+    plt.show()
+
+
+def plot_error_and_anomalies(
+    y_true: Sequence[int],
+    y_error: Sequence[float],
+    y_max: float = 0.1,
+    figsize: tuple[int, int] = (20, 6),
+    save_path: str | Path | None = None,
+) -> None:
+    x = np.arange(len(y_error))
+
+    plt.figure(figsize=figsize)
+    plt.plot(x, y_error, color='brown', alpha=0.9, linewidth=1.4)
+
+    start_indices = np.where(np.diff(y_true, prepend=0) == 1)[0]
+    end_indices = np.where(np.diff(y_true, append=0) == -1)[0]
+
+    # Highlight anomaly regions
+    for start, end in zip(start_indices, end_indices, strict=True):
+        plt.axvspan(start, end, color='red', alpha=0.1)
+
+    plt.ylim(0.0, y_max)
+
+    plt.ylabel('Error')
+    plt.xlabel('Frame')
+
+    plt.legend(['Error', 'Anomaly'], fancybox=True, facecolor='white', borderpad=0.1)
 
     if save_path:
         plt.savefig(save_path)
