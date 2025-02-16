@@ -14,6 +14,8 @@ from torch.utils.data import DataLoader, Dataset
 from .common import BatchSizeDict, crop_driver_image
 from .memory_map import MemMapReader
 
+logger = logging.getLogger(__name__)
+
 
 class DatasetItem(TypedDict):
     image: np.ndarray | torch.Tensor
@@ -242,6 +244,7 @@ class VideoInfo:
     memory_map: 'MemMapReader'
     start_idx: int  # Global start index for this video
     length: int  # Number of windows in this video
+    path: Path  # Path to the video file
 
 
 class TemporalAutoencoderDatasetDMD(Dataset):
@@ -304,6 +307,8 @@ class TemporalAutoencoderDatasetDMD(Dataset):
         )
         if not self.video_files:
             raise ValueError(f'No .dat files found in {dataset_directories}')
+        if len(self.video_files) < len(self.dataset_directories):
+            raise ValueError('Some directories do not contain the required .dat files.')
 
         self.videos: list[VideoInfo] = []
         current_idx = 0
@@ -316,7 +321,10 @@ class TemporalAutoencoderDatasetDMD(Dataset):
 
             self.videos.append(
                 VideoInfo(
-                    memory_map=memory_map, start_idx=current_idx, length=video_length
+                    memory_map=memory_map,
+                    start_idx=current_idx,
+                    length=video_length,
+                    path=video_file,
                 )
             )
             current_idx += video_length
@@ -482,7 +490,7 @@ class DatasetPathsLoader:
         ):
             raise ValueError('Empty dataset. Please check the dataset paths.')
         else:
-            logging.info('Dataset paths validated successfully!')
+            logger.info('Dataset paths validated successfully!')
 
     def _validate_shapes(self) -> None:
         def validate_shapes(images: list[Path], masks: list[Path]) -> bool:
@@ -504,7 +512,7 @@ class DatasetPathsLoader:
         if not all([train_validated, valid_validated, test_validated]):
             raise ValueError('Images and masks do not have the same shape.')
         else:
-            logging.info('Shapes of images and masks validated successfully!')
+            logger.info('Shapes of images and masks validated successfully!')
 
     def __str__(self) -> str:
         return f'Train:\n{self.train}\n\nValid:\n{self.valid}\n\nTest:\n{self.test}'
@@ -527,7 +535,7 @@ class DatasetPathsLoader:
                 test_transforms is None,
             ]
         ):
-            logging.warning('Transforms not provided. Loaders will return raw images.')
+            logger.warning('Transforms not provided. Loaders will return raw images.')
 
         if dataset == 'segmentation':
             train_dataset = SegmentationDataset(
