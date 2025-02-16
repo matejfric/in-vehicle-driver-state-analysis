@@ -14,19 +14,20 @@ people_dirs_and_subdirs: list[list[Path]] = [
 all_dirs: list[Path] = [
     subdir for sublist in people_dirs_and_subdirs for subdir in sublist
 ]
-job_root = Path('jobs/depth')
+
+now = datetime.now().strftime('%Y-%m-%d-%H%M')
+job_root = Path('jobs/depth') / now
 
 pprint(all_dirs)
 
 # %%
-
 for dir in all_dirs:
     path_parts = str(dir).split('/')
     output_subdir = path_parts[-2]
     output_name = path_parts[-1]
 
     print(
-        f'{datetime.now().strftime('%Y-%m-%d %H:%M:%S')} processing: {output_subdir}/{output_name}'
+        f'{datetime.now().strftime("%Y-%m-%d %H:%M:%S")} processing: {output_subdir}/{output_name}'
     )
 
     (job_root / output_subdir).mkdir(parents=True, exist_ok=True)
@@ -35,9 +36,7 @@ for dir in all_dirs:
     pm.execute_notebook(
         'job_depth.ipynb',
         f'{str(job_dir)}.ipynb',
-        parameters=dict(
-            input_dir=str(dir / 'images'),
-        ),
+        parameters={'input_dir': str(dir / 'images'), 'dataset': 'mrl-515'},
     )
 
 # %%

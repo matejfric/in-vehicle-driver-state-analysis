@@ -1,5 +1,6 @@
 import logging
 from collections import OrderedDict
+from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal, TypedDict, cast
@@ -163,6 +164,7 @@ class TemporalAutoencoderDataset(Dataset):
         time_dim_index: Literal[0, 1] = 0,
         transforms: albu.Compose | None = None,
         input_transforms: albu.Compose | None = None,
+        dtype: type = np.uint8,
     ) -> None:
         """Dataset for temporal autoencoder.
 
@@ -200,7 +202,9 @@ class TemporalAutoencoderDataset(Dataset):
         ```
         """
         self.memory_map_file = memory_map_file
-        self.memory_map = MemMapReader(memory_map_file, memory_map_image_shape)
+        self.memory_map = MemMapReader(
+            memory_map_file, memory_map_image_shape, dtype=dtype
+        )
         self.window_size = window_size
         self.time_step = time_step
         self.time_dim_index = time_dim_index
@@ -250,14 +254,14 @@ class VideoInfo:
 class TemporalAutoencoderDatasetDMD(Dataset):
     def __init__(
         self,
-        dataset_directories: Path | str | list[str | Path],
+        dataset_directories: Path | str | Sequence[str | Path],
         memory_map_image_shape: tuple[int, int] = (256, 256),
         window_size: int = 4,
         time_step: int = 1,
         time_dim_index: Literal[0, 1] = 0,
         transforms: albu.Compose | None = None,
         input_transforms: albu.Compose | None = None,
-        source_type: Literal['depth', 'rgb'] = 'depth',
+        source_type: Literal['depth', 'rgb', 'source_depth'] = 'depth',
     ) -> None:
         """Dataset for temporal autoencoder supporting multiple video files.
 
@@ -287,7 +291,7 @@ class TemporalAutoencoderDatasetDMD(Dataset):
         """
         self.dataset_directories = (
             [Path(directory) for directory in dataset_directories]
-            if isinstance(dataset_directories, list)
+            if isinstance(dataset_directories, Sequence)
             else [Path(dataset_directories)]
         )
         self.window_size = window_size

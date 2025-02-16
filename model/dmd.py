@@ -10,7 +10,7 @@ import numpy as np
 from PIL import Image
 from tqdm import tqdm
 
-from model.common import pad_to_square
+from model.common import pad_to_square, preprocess_depth_frame
 
 ROOT: Final[Path] = Path.home() / 'source' / 'driver-dataset' / 'dmd'
 CATEGORIES: Final[list[str]] = ['normal', 'anomal']
@@ -150,14 +150,6 @@ def extract_frames(
         skip_output_directory_setup=skip_output_directory_setup,
     )
 
-    def preprocess_depth_frame(frame: np.ndarray) -> np.ndarray:
-        """Preprocess depth frame."""
-        # frame_clipped = np.clip(frame, 0, depth_threshold)
-        frame_clipped = np.where(frame > depth_threshold, 0, frame)
-        # Map the range [0, depth_threshold] to [0, 255]
-        img8 = ((frame_clipped / depth_threshold) * 255).astype(np.uint8)
-        return np.asarray(pad_to_square(Image.fromarray(img8)))
-
     # Initialize video capture
     cap = cv2.VideoCapture(str(input_video_path))
     if not cap.isOpened():
@@ -184,7 +176,7 @@ def extract_frames(
                 break
 
             if source_type == 'depth':
-                frame = preprocess_depth_frame(frame)
+                frame = preprocess_depth_frame(frame, depth_threshold=depth_threshold)
                 target_dir = 'source_depth'
             else:
                 target_dir = source_type
@@ -227,10 +219,14 @@ def extract_frames(
     cap.release()
 
 
-def _load_images_as_array(input_dir: str | Path, extension: str = 'jpg') -> np.ndarray:
+def _load_images_as_array(
+    input_dir: str | Path, extension: str = 'jpg', limit: None | int = None
+) -> np.ndarray:
     """Load images from directory as a NumPy array."""
     input_dir = Path(input_dir)
     image_files = sorted(input_dir.glob(f'*.{extension}'), key=lambda p: p.stem)
+    if limit is not None:
+        image_files = image_files[:limit]
     images = [np.array(Image.open(img)) for img in image_files]
     return np.stack(images, axis=0)
 

@@ -21,8 +21,6 @@ class TemporalAutoencoderModel(L.LightningModule):
         loss_function: Literal['mae', 'mse'] = 'mse',
         time_dim_index: Literal[1, 2] = 1,
         eps: float = 1e-07,  # Adam default is 1e-8
-        train_noise_std_input: float = 0.0,
-        train_noise_std_latent: float = 0.0,
         **kwargs: dict[Any, Any],
     ) -> None:
         """Temporal autoencoder model.
@@ -44,10 +42,6 @@ class TemporalAutoencoderModel(L.LightningModule):
             Index of the temporal dimension in the input tensor.
             If `1`, the input tensor has shape `(batch_size, temporal_dim, channels, height, width)`.
             If `2`, the input tensor has shape `(batch_size, channels, temporal_dim, height, width)`.
-        train_noise_std_input: float, default=0.0
-            Standard deviation of the Gaussian noise added to the input image.
-        train_noise_std_latent: float, default=0.0
-            Standard deviation of the Gaussian noise added to the latent space representation.
         kwargs : dict
         """
         super().__init__(**kwargs)
@@ -59,8 +53,6 @@ class TemporalAutoencoderModel(L.LightningModule):
         self.lr = learning_rate
         self.eps = eps
         self.time_dim_index = time_dim_index
-        self.train_noise_std_input = train_noise_std_input
-        self.train_noise_std_latent = train_noise_std_latent
 
         loss_functions = {'mae': nn.SmoothL1Loss(), 'mse': nn.MSELoss()}
         self.loss_function_ = loss_functions[loss_function]
@@ -71,20 +63,9 @@ class TemporalAutoencoderModel(L.LightningModule):
         )
 
     def forward(self, image: torch.Tensor) -> torch.Tensor:
-        """Forward pass.
-
-        Note
-        ----
-        Gaussian noise in torch: https://stackoverflow.com/a/59044860
-        """
-        # Add noise to the input image
-        image += torch.randn_like(image) * self.train_noise_std_input
+        """Forward pass"""
         encoded = self.encoder(image)
-
-        # Add noise to the latent space representation
-        encoded = encoded + torch.randn_like(encoded) * self.train_noise_std_latent
         decoded = self.decoder(encoded)
-
         return decoded
 
     def shared_step(self, batch: dict[str, torch.Tensor]) -> dict:

@@ -1,10 +1,13 @@
 import argparse
 from pathlib import Path
 
+import numpy as np
+
 from model.memory_map import (
     MemMapWriter,
     crop_mask_resize_driver,
     crop_resize_driver,
+    intel_515,
     mask_resize_driver,
     resize_driver,
 )
@@ -24,6 +27,8 @@ def main(args: argparse.Namespace) -> None:
     if not image_paths:
         raise ValueError(f'No images found in {image_dir}.')
 
+    data_type = np.uint8
+
     # Write the memory-mapped file
     if args.mask and args.crop:
         func = crop_mask_resize_driver
@@ -32,11 +37,17 @@ def main(args: argparse.Namespace) -> None:
         output_file = str(output_file).replace('.dat', '_no_mask.dat')
     elif args.mask:
         func = mask_resize_driver
+    elif args.L515:
+        func = intel_515
+        output_file = str(output_file).replace('.dat', '_no_mask.dat')
+        data_type = np.float32
     else:
         func = resize_driver
         output_file = str(output_file).replace('.dat', '_no_mask.dat')
 
-    mm_writer = MemMapWriter(image_paths, output_file, func, resize=(resize, resize))
+    mm_writer = MemMapWriter(
+        image_paths, output_file, func, resize=(resize, resize), dtype=data_type
+    )
     mm_writer.write()
     print(mm_writer)
 
@@ -71,6 +82,11 @@ if __name__ == '__main__':
         '--crop',
         action='store_true',
         help='Crop the image to the driver area (default: False).',
+    )
+    parser.add_argument(
+        '--L515',
+        action='store_true',
+        help='Use preprocessing for Intel RealSense L515 camera (default: False).',
     )
 
     args = parser.parse_args()

@@ -28,7 +28,7 @@ class TimeDistributed(torch.nn.Module):
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         time_steps = x.size()[1]
-        output = torch.tensor([], device=x.device)
+        output = torch.tensor([], device=x.device, dtype=x.dtype)
         for i in range(time_steps):
             output_t = self.layers[i](x[:, i])
             output_t = output_t.unsqueeze(1)

@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal, TypeAlias, TypedDict
 
+import numpy as np
 from PIL import Image, ImageOps
 
 logger = logging.getLogger(__name__)
@@ -17,6 +18,7 @@ DRIVER_MAPPING: dict[str, int] = {
     '2021_11_05_michal_enyaq': 4,
     '2021_09_06_poli_enyaq': 5,
     '2021_11_18_dans_enyaq': 6,
+    '2024_07_02_radovan_enyaq': -1,  # Not in the original papers
 }
 
 
@@ -51,6 +53,11 @@ def pad_to_square(image: Image.Image, fill: str = 'black') -> Image.Image:
         fill=fill,
     )
     return padded_image
+
+
+def preprocess_515(image: Image.Image) -> Image.Image:
+    """Preprocess the image from the Intel RealSense L515 camera."""
+    return pad_to_square(image, fill='black').rotate(180)
 
 
 @dataclass
@@ -161,3 +168,33 @@ class Anomalies:
                 anomaly.end - anomaly.start
             )
         return ground_truth
+
+
+def convert_depth_images_to_video(
+    path: str | Path,
+    output: str = 'video_depth.mp4',
+    fps: int = 10,
+    extension: str = 'png',
+    limit: int | None = None,
+) -> None:
+    """Convert a sequence of depth images to a video."""
+    from .depth_anything.utils.dc_utils import save_video
+    from .dmd import _load_images_as_array
+
+    path = Path(path)
+    if not path.exists():
+        raise ValueError(f'Directory not found: {path}')
+    frames = _load_images_as_array(path, extension=extension, limit=limit)
+    save_video(frames, path / output, fps=fps, is_depths=True)
+
+
+def preprocess_depth_frame(
+    frame: np.ndarray,
+    depth_threshold: int = 2000,
+) -> np.ndarray:
+    """Preprocess depth frame."""
+    # frame_clipped = np.clip(frame, 0, depth_threshold)
+    frame_clipped = np.where(frame > depth_threshold, 0, frame)
+    # Map the range [0, depth_threshold] to [0, 255]
+    img8 = ((frame_clipped / depth_threshold) * 255).astype(np.uint8)
+    return np.asarray(pad_to_square(Image.fromarray(img8)))

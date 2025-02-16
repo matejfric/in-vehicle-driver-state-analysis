@@ -5,13 +5,22 @@ import numpy as np
 from PIL import Image
 from tqdm import tqdm
 
-from .common import crop_driver_image_contains
+from .common import crop_driver_image_contains, preprocess_515
 
 
 def resize_driver(image_path: Path, resize: tuple[int, int]) -> np.ndarray:
     image_pil = Image.open(image_path)
     image_pil = image_pil.resize(resize)
     return np.array(image_pil)
+
+
+def intel_515(image_path: Path, resize: tuple[int, int]) -> np.ndarray:
+    image_pil = Image.open(image_path)
+    image_pil = preprocess_515(image_pil)
+    image_pil = image_pil.resize(resize)
+    image_np = np.array(image_pil, dtype=np.float32)
+    image_np = image_np / image_np.max()
+    return image_np
 
 
 def crop_resize_driver(image_path: Path, resize: tuple[int, int]) -> np.ndarray:
@@ -119,7 +128,12 @@ class MemMapWriter:
 
 
 class MemMapReader:
-    def __init__(self, memmap_file: Path | str, shape: tuple[int, int]) -> None:
+    def __init__(
+        self,
+        memmap_file: Path | str,
+        shape: tuple[int, int],
+        dtype: type = np.uint8,
+    ) -> None:
         """Initialize MemMapReader with parameters to read images from a memory-mapped file.
 
         Example
@@ -134,13 +148,15 @@ class MemMapReader:
         self.memmap_file = memmap_file
         self.shape = shape
 
-        memmap_bytes = len(np.memmap(memmap_file, mode='r'))
+        memmap_bytes = len(np.memmap(memmap_file, mode='r', dtype=dtype))
         self.n_images = int(memmap_bytes // np.prod(shape))
 
         if not self.n_images * np.prod(shape) == memmap_bytes:
             raise ValueError(f'{__class__.__name__}: Shape `{shape}` is invalid.')
 
-        self.memmap = np.memmap(memmap_file, mode='r', shape=(self.n_images, *shape))
+        self.memmap = np.memmap(
+            memmap_file, mode='r', shape=(self.n_images, *shape), dtype=dtype
+        )
 
     def __len__(self) -> int:
         """Returns the number of images in the memory-mapped file."""

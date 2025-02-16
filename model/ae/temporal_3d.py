@@ -102,10 +102,6 @@ class STAEModel(L.LightningModule):
             Index of the temporal dimension in the input tensor.
             If `1`, the input tensor has shape `(batch_size, temporal_dim, channels, height, width)`.
             If `2`, the input tensor has shape `(batch_size, channels, temporal_dim, height, width)`.
-        train_noise_std_input: float, default=0.0
-            Standard deviation of the Gaussian noise added to the input image.
-        train_noise_std_latent: float, default=0.0
-            Standard deviation of the Gaussian noise added to the latent space representation.
         lambda_reg : float, default=1e-4
             Regularization parameter.
         regularization : {'l2_model_weights', 'l2_encoder_weights'}, default=None

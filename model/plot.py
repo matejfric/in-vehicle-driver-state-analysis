@@ -625,29 +625,44 @@ def plot_learning_curves(
 
 def plot_error_and_anomalies(
     y_true: Sequence[int],
-    y_error: Sequence[float],
-    y_max: float = 0.1,
+    y_pred: Sequence[float],
+    y_max: float = 1.0,
+    threshold: float | None = None,
     figsize: tuple[int, int] = (20, 6),
     save_path: str | Path | None = None,
 ) -> None:
-    x = np.arange(len(y_error))
+    x = np.arange(len(y_pred))
 
     plt.figure(figsize=figsize)
-    plt.plot(x, y_error, color='brown', alpha=0.9, linewidth=1.4)
-
-    start_indices = np.where(np.diff(y_true, prepend=0) == 1)[0]
-    end_indices = np.where(np.diff(y_true, append=0) == -1)[0]
+    plt.plot(x, y_pred, color='brown', alpha=0.9, linewidth=1.5, label='Error')
 
     # Highlight anomaly regions
+    start_indices = np.where(np.diff(y_true, prepend=0) == 1)[0]
+    end_indices = np.where(np.diff(y_true, append=0) == -1)[0]
     for start, end in zip(start_indices, end_indices, strict=True):
-        plt.axvspan(start, end, color='red', alpha=0.1)
+        plt.axvspan(
+            start,
+            end,
+            color='red',
+            alpha=0.1,
+            label='Anomaly' if start == start_indices[0] else '',
+        )
 
     plt.ylim(0.0, y_max)
+
+    if threshold:
+        plt.axhline(
+            y=threshold, color='black', linestyle='--', linewidth=2.0, label='Threshold'
+        )
 
     plt.ylabel('Error')
     plt.xlabel('Frame')
 
-    plt.legend(['Error', 'Anomaly'], fancybox=True, facecolor='white', borderpad=0.1)
+    plt.legend(
+        fancybox=True,
+        facecolor='white',
+        borderpad=0.1,
+    )
 
     if save_path:
         plt.savefig(save_path)

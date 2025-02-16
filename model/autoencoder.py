@@ -18,8 +18,6 @@ class AutoencoderModel(L.LightningModule):
         batch_size_dict: BatchSizeDict,
         learning_rate: float = 1e-4,
         loss_function: Literal['mae', 'mse'] = 'mse',
-        train_noise_std_input: float = 0.0,
-        train_noise_std_latent: float = 0.0,
         **kwargs: dict[Any, Any],
     ) -> None:
         """Autoencoder model.
@@ -34,10 +32,6 @@ class AutoencoderModel(L.LightningModule):
             Dictionary with batch sizes for `train`, `valid`, and `test` datasets.
         learning_rate : float, default=1e-4
         loss_function : {'fro', 'mse'}, default='mse'
-        train_noise_std_input: float, default=0.0
-            Standard deviation of the Gaussian noise added to the input image.
-        train_noise_std_latent: float, default=0.0
-            Standard deviation of the Gaussian noise added to the latent space representation.
         kwargs : dict
         """
         super().__init__()
@@ -49,9 +43,6 @@ class AutoencoderModel(L.LightningModule):
         self.batch_size_dict = batch_size_dict
         self.lr = learning_rate
 
-        self.train_noise_std_input = train_noise_std_input
-        self.train_noise_std_latent = train_noise_std_latent
-
         loss_functions = {'mae': nn.SmoothL1Loss(), 'mse': nn.MSELoss()}
         self.loss_function = loss_functions[loss_function]
         self.metrics_ = dict(
@@ -61,20 +52,9 @@ class AutoencoderModel(L.LightningModule):
         )
 
     def forward(self, image: torch.Tensor) -> torch.Tensor:
-        """Forward pass.
-
-        Note
-        ----
-        Gaussian noise in torch: https://stackoverflow.com/a/59044860
-        """
-        # Add noise to the input image
-        image += torch.randn_like(image) * self.train_noise_std_input
+        """Forward pass"""
         encoded = self.encoder(image)
-
-        # Add noise to the latent space representation
-        encoded = encoded + torch.randn_like(encoded) * self.train_noise_std_latent
         decoded = self.decoder(encoded)
-
         return decoded
 
     def shared_step(self, batch: dict[str, torch.Tensor]) -> dict:
