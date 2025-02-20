@@ -10,7 +10,7 @@ import pandas as pd
 import torch
 from PIL import Image
 from pytorch_lightning import LightningModule
-from sklearn.metrics import auc, roc_curve
+from sklearn.metrics import auc, precision_recall_curve, roc_curve
 from torch.utils.data import DataLoader
 
 from .common import crop_driver_image
@@ -670,6 +670,99 @@ def plot_error_and_anomalies(
     plt.show()
 
 
+def plot_pr_chart(
+    y_true: np.ndarray | list[int],
+    y_pred_proba: np.ndarray | list[float],
+    save_path: str | Path | None = None,
+    figsize: tuple[int, int] = (7, 7),
+    cmap: str = 'rainbow',
+    cbar_text: str = 'Thresholds',
+) -> tuple[float, float]:
+    """
+    Plot Precision-Recall curve with optimal threshold.
+
+    Parameters
+    ----------
+    y_true : np.ndarray or list[int]
+        True binary labels.
+    y_pred_proba : np.ndarray or list[float]
+        Predicted probabilities.
+    save_path : str or Path, optional
+        If provided, the plot is saved to this path.
+    figsize : tuple, default=(7, 7)
+        Figure size.
+    cmap : str, default='rainbow'
+        Colormap for the thresholds.
+    cbar_text : str, default='Thresholds'
+        Label for the colorbar.
+
+    Returns
+    -------
+    pr_auc : float
+        Area under the Precision-Recall curve.
+    optimal_threshold : float
+        Optimal threshold based on the maximum F1 score.
+
+    Note
+    ----
+    The optimal threshold is selected by maximizing the F1 score computed from the
+    precision and recall values. Additionally, the no-skill baseline (i.e. the ratio
+    of positive samples) is plotted for reference.
+    """
+    plt.figure(figsize=figsize)
+
+    # Compute precision, recall and thresholds.
+    # Note: precision and recall have one more element than thresholds.
+    precision, recall, thresholds = precision_recall_curve(y_true, y_pred_proba)
+    pr_auc = auc(recall, precision)
+
+    # Compute F1 scores for each threshold (skip the first element).
+    f1_scores = 2 * precision[1:] * recall[1:] / (precision[1:] + recall[1:])
+    optimal_idx = f1_scores.argmax()
+    optimal_threshold = thresholds[optimal_idx]
+
+    # Plot the precision-recall curve.
+    plt.plot(recall, precision, c='black', label=f'AUC={pr_auc:.3f}')
+    scatter = plt.scatter(recall[1:], precision[1:], c=thresholds, cmap=cmap)
+
+    # Plot the no-skill baseline (precision equals the ratio of positive samples).
+    no_skill = np.sum(y_true) / len(y_true)
+    plt.hlines(no_skill, 0, 1, colors='gray', linestyles='dashed', label='Baseline')
+
+    # Mark the optimal threshold point.
+    optimal_recall = recall[optimal_idx + 1]
+    optimal_precision = precision[optimal_idx + 1]
+    plt.plot(
+        [optimal_recall, optimal_recall], [0, optimal_precision], 'k', linestyle='solid'
+    )
+    plt.text(
+        optimal_recall + 0.01,  # - 0.2,
+        optimal_precision / 2,
+        f'T={optimal_threshold:.2f}',
+        fontsize=12,
+    )
+
+    # Add a colorbar to indicate threshold values.
+    cbar = plt.colorbar(scatter, shrink=0.7)
+    cbar.set_label(cbar_text)
+
+    # Set chart details.
+    plt.title('Precision-Recall Chart')
+    plt.xlim([0, 1])
+    plt.ylim([0, 1])
+    plt.axis('square')
+    plt.xlabel('Recall')
+    plt.ylabel('Precision')
+    plt.legend(loc='lower left')
+    plt.tight_layout()
+
+    if save_path:
+        plt.savefig(save_path)
+    plt.show()
+
+    return float(pr_auc), optimal_threshold
+
+
 def plot_roc_chart(
     y_true: np.ndarray | list[int],
     y_pred_proba: np.ndarray | list[float],
@@ -716,7 +809,7 @@ def plot_roc_chart(
     scatter = plt.scatter(fpr, tpr, c=thresholds, cmap=cmap)
 
     # Random predictions curve:
-    plt.plot([0, 1], [0, 1], 'k--', alpha=0.5)
+    plt.plot([0, 1], [0, 1], 'k--', alpha=0.5, label='Baseline')
 
     # Maximum value of Youden's index for the ROC curve (optimal threshold):
     # https://en.wikipedia.org/wiki/Youden%27s_J_statistic
