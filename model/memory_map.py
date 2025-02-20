@@ -1,17 +1,27 @@
 from collections.abc import Callable, Generator
 from pathlib import Path
 
+import cv2 as cv
 import numpy as np
 from PIL import Image
 from tqdm import tqdm
 
-from .common import crop_driver_image_contains, preprocess_515
+from .common import crop_driver_image_contains, preprocess_515, preprocess_515_cv
 
 
 def resize_driver(image_path: Path, resize: tuple[int, int]) -> np.ndarray:
     image_pil = Image.open(image_path)
     image_pil = image_pil.resize(resize)
     return np.array(image_pil)
+
+
+def intel_515_cv(image_path: Path, resize: tuple[int, int]) -> np.ndarray:
+    img = cv.imread(str(image_path), cv.IMREAD_UNCHANGED)
+    img = np.array(img, dtype=np.uint16)
+    img = (img / np.iinfo(np.uint16).max).astype(np.float32)
+    img = preprocess_515_cv(img, opening_kernel_size=8)
+    img = cv.resize(img, resize, interpolation=cv.INTER_AREA)
+    return img
 
 
 def intel_515(image_path: Path, resize: tuple[int, int]) -> np.ndarray:

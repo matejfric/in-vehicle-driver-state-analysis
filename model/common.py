@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal, TypeAlias, TypedDict
 
+import cv2 as cv
 import numpy as np
 from PIL import Image, ImageOps
 
@@ -46,6 +47,9 @@ def crop_driver_image_contains(image: Image.Image, image_path: Path) -> Image.Im
 
 def pad_to_square(image: Image.Image, fill: str = 'black') -> Image.Image:
     w, h = image.size
+    if h == w:
+        return image  # Already square
+
     padding = (w - h) // 2
     padded_image = ImageOps.expand(
         image,
@@ -53,6 +57,34 @@ def pad_to_square(image: Image.Image, fill: str = 'black') -> Image.Image:
         fill=fill,
     )
     return padded_image
+
+
+def pad_to_square_cv(image: np.ndarray) -> np.ndarray:
+    h, w = image.shape[:2]
+    if h == w:
+        return image  # Already square
+
+    padding = abs(w - h) // 2
+    if h < w:
+        padded_image = cv.copyMakeBorder(
+            image, padding, padding, 0, 0, cv.BORDER_CONSTANT, value=0
+        )
+    else:
+        padded_image = cv.copyMakeBorder(
+            image, 0, 0, padding, padding, cv.BORDER_CONSTANT, value=0
+        )
+
+    return padded_image
+
+
+def preprocess_515_cv(
+    image: np.ndarray, opening_kernel_size: int | None = None
+) -> np.ndarray:
+    """Preprocess the image from the Intel RealSense L515 camera."""
+    if opening_kernel_size:
+        kernel = np.ones((opening_kernel_size, opening_kernel_size), np.float32)
+        image = cv.morphologyEx(image, cv.MORPH_OPEN, kernel)
+    return cv.rotate(pad_to_square_cv(image), cv.ROTATE_180)
 
 
 def preprocess_515(image: Image.Image) -> Image.Image:
