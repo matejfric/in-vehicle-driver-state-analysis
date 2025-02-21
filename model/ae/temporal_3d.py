@@ -6,6 +6,7 @@ import pytorch_lightning as L
 import torch
 import torch.nn as nn
 import torch.optim
+from torch.autograd import Variable
 from torchmetrics.functional import mean_absolute_error, mean_squared_error
 
 from model.common import BatchSizeDict, ModelStages
@@ -46,19 +47,20 @@ class STAELoss(nn.Module):
 
     def forward(
         self,
-        inputs: torch.Tensor,
+        expected_outputs: torch.Tensor,
         reconstructed: torch.Tensor,
         future_predictions: torch.Tensor | None,
         future_targets: torch.Tensor,
         model_parameters: list[torch.Tensor] | None = None,
+        encoded: torch.Tensor | None = None,
     ) -> STAELosses:
         """The tensors have shape `(batch_size, channels, temporal_dim, height, width)`"""
 
         # Reconstruction loss
-        L_recon = self.reconstruction_loss(inputs, reconstructed)
+        L_recon = self.reconstruction_loss(reconstructed, expected_outputs)
 
         # Prediction loss with weight-decreasing factor
-        if future_predictions:
+        if future_predictions is not None:
             T = future_targets.size(self.time_dim_index)  # Number of future frames
             weights = torch.arange(  # e.g., [4, 3, 2, 1] for T=4
                 T, 0, -1, dtype=torch.float32, device=future_targets.device
@@ -73,19 +75,33 @@ class STAELoss(nn.Module):
             L_pred = torch.tensor(0.0, device=future_targets.device)
 
         # Regularization term
-        if self.regularization == 'contractive':
-            # https://stackoverflow.com/a/72904717/22172560
-            # https://pytorch.org/docs/stable/generated/torch.autograd.functional.jacobian.html
-            L_reg = torch.norm(
-                torch.autograd.functional.jacobian(
-                    self.encoder, inputs, create_graph=True
-                )
+        if self.regularization == 'contractive' and model_parameters:
+            encoded = encoded.view(-1).unsqueeze(1)
+            dh = encoded * (1 - encoded)
+            w_sum = torch.tensor(
+                [
+                    [
+                        torch.sum(
+                            torch.tensor(
+                                [
+                                    torch.sum(Variable(W) ** 2, dim=None)
+                                    for W in model_parameters
+                                ],
+                                device=encoded.device,
+                            ),
+                            dim=None,
+                        )
+                    ]
+                ],
+                device=encoded.device,
             )
+            L_reg = torch.sum(torch.mm(dh**2, w_sum), 0)
         else:
             L_reg = (
-                sum(param.norm(2) for param in model_parameters)
+                # Sum of squares of all parameters (standard weight decay)
+                sum(torch.sum(param**2) for param in model_parameters)
                 if model_parameters
-                else 0.0
+                else torch.tensor(0.0, device=expected_outputs.device)
             )
 
         # Combined loss
@@ -185,23 +201,29 @@ class STAEModel(L.LightningModule):
             fro=lambda x, y: torch.norm(x - y, dim=1, p='fro'),
         )
 
-    def forward(self, x: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor | None]:
+    def forward(
+        self, x: torch.Tensor
+    ) -> tuple[torch.Tensor, torch.Tensor | None, torch.Tensor]:
         """Forward pass."""
         encoded = self.encoder(x)
         reconstructed = self.decoder(encoded)
         predicted = self.predictor(encoded) if self.predictor else None
 
-        return reconstructed, predicted
+        return reconstructed, predicted, encoded
 
     def shared_step(
         self, batch: dict[str, torch.Tensor]
     ) -> tuple[dict[str, torch.Tensor], dict[str, torch.Tensor]]:
-        images = batch['image']
+        images = Variable(batch['image'])
         future_images = batch['mask']
         expected_outputs = images.clone()
-        reconstructed, predicted = self.forward(images)
 
-        if self.regularization == 'l2_encoder_weights':
+        reconstructed, predicted, encoded = self.forward(images)
+
+        if (
+            self.regularization == 'l2_encoder_weights'
+            or self.regularization == 'contractive'
+        ):
             regularization = self.encoder.parameters()
         elif self.regularization == 'l2_model_weights':
             regularization = self.parameters()
@@ -209,7 +231,12 @@ class STAEModel(L.LightningModule):
             regularization = None
 
         losses = self.loss_function(
-            expected_outputs, reconstructed, predicted, future_images, regularization
+            expected_outputs,
+            reconstructed,
+            predicted,
+            future_images,
+            regularization,
+            encoded,
         )
 
         # The tensors have shape `(batch_size, channels, temporal_dim, height, width)`
