@@ -1,4 +1,6 @@
-from typing import Any, Literal, TypedDict
+from __future__ import annotations
+
+from typing import Any, Literal, TypeAlias, TypedDict
 
 import pytorch_lightning as L
 import torch
@@ -10,6 +12,10 @@ from model.common import BatchSizeDict, ModelStages
 
 from .common import Decoder, Encoder
 
+RegularizationType: TypeAlias = Literal[
+    'l2_model_weights', 'l2_encoder_weights', 'contractive'
+]
+
 
 class STAELosses(TypedDict):
     total_loss: torch.Tensor
@@ -19,11 +25,24 @@ class STAELosses(TypedDict):
 
 
 class STAELoss(nn.Module):
-    def __init__(self, lambda_reg: float = 1e-4) -> None:
+    def __init__(
+        self,
+        lambda_reg: float = 1e-4,
+        regularization: RegularizationType | None = None,
+        encoder: torch.Module | Conv3dEncoder | None = None,
+    ) -> None:
         super().__init__()
         self.lambda_reg = lambda_reg
         self.reconstruction_loss = nn.MSELoss(reduction='mean')
         self.time_dim_index = 2
+
+        if regularization == 'contractive' and encoder is None:
+            raise ValueError(
+                'The encoder must be provided for contractive regularization.'
+            )
+
+        self.encoder = encoder
+        self.regularization = regularization
 
     def forward(
         self,
@@ -54,11 +73,20 @@ class STAELoss(nn.Module):
             L_pred = torch.tensor(0.0, device=future_targets.device)
 
         # Regularization term
-        L_reg = (
-            sum(param.norm(2) for param in model_parameters)
-            if model_parameters
-            else 0.0
-        )
+        if self.regularization == 'contractive':
+            # https://stackoverflow.com/a/72904717/22172560
+            # https://pytorch.org/docs/stable/generated/torch.autograd.functional.jacobian.html
+            L_reg = torch.norm(
+                torch.autograd.functional.jacobian(
+                    self.encoder, inputs, create_graph=True
+                )
+            )
+        else:
+            L_reg = (
+                sum(param.norm(2) for param in model_parameters)
+                if model_parameters
+                else 0.0
+            )
 
         # Combined loss
         total_loss = L_recon + L_pred + self.lambda_reg * L_reg
@@ -78,7 +106,8 @@ class STAEModel(L.LightningModule):
         time_dim_index: Literal[2] = 2,
         eps: float = 1e-07,  # Adam default is 1e-8
         lambda_reg: float = 1e-4,
-        regularization: Literal['l2_model_weights', 'l2_encoder_weights'] | None = None,
+        regularization: RegularizationType | None = None,
+        use_extra_3dconv: bool = True,
         use_2d_bottleneck: list[int] | None = None,
         use_prediction_branch: bool = True,
         **kwargs: dict[Any, Any],
@@ -106,22 +135,38 @@ class STAEModel(L.LightningModule):
             Regularization parameter.
         regularization : {'l2_model_weights', 'l2_encoder_weights'}, default=None
             Regularization type. If `None`, no regularization is applied.
+        use_extra_3dconv : bool, default=True
+            Whether to use an extra 3D convolutional layer in the encoder and decoder compared to the original paper.
+            If `True`, the bottleneck dimension is `(None, 64, 1, 8, 8)`.
         use_2d_bottleneck : list[int], default=None
             List of number of output channels for the 2D bottleneck layers. The list is reversed
             for the decoder. For example, if `use_2d_bottleneck=[64, 128]`, the encoder will have
             two 2D bottleneck layers with 64 and 128 output channels, respectively, and the decoder
             will have two 2D deconvolution layers with 128 and 64 output channels, respectively.
+        use_prediction_branch : bool, default=True
+            Whether to use a prediction branch in the model. Can be set to `False` for an ablation study.
         kwargs : dict
+
+        Note
+        ----
+        Inspired by [Zhao et al. Spatio-Temporal AutoEncoder for Video Anomaly Detection](https://doi.org/10.1145/3123266.3123451)
         """
         super().__init__(**kwargs)
         self.save_hyperparameters(ignore=['encoder', 'decoder'])
 
-        self.encoder = Conv3dEncoder(use_2d_bottleneck=use_2d_bottleneck)
+        self.encoder = Conv3dEncoder(
+            use_2d_bottleneck=use_2d_bottleneck, use_extra_3dconv=use_extra_3dconv
+        )
         reversed_2d_bottleneck = use_2d_bottleneck[::-1] if use_2d_bottleneck else None
-        self.decoder = Conv3dDecoder(use_2d_bottleneck=reversed_2d_bottleneck)
+        self.decoder = Conv3dDecoder(
+            use_2d_bottleneck=reversed_2d_bottleneck, use_extra_3dconv=use_extra_3dconv
+        )
         # Decoder is the same as the predictor
         self.predictor = (
-            Conv3dDecoder(use_2d_bottleneck=reversed_2d_bottleneck)
+            Conv3dDecoder(
+                use_2d_bottleneck=reversed_2d_bottleneck,
+                use_extra_3dconv=use_extra_3dconv,
+            )
             if use_prediction_branch
             else None
         )
@@ -133,7 +178,7 @@ class STAEModel(L.LightningModule):
         self.lambda_reg = lambda_reg
         self.regularization = regularization
 
-        self.loss_function = STAELoss(lambda_reg)
+        self.loss_function = STAELoss(lambda_reg, regularization, self.encoder)
         self.metrics_ = dict(
             mae=mean_absolute_error,
             mse=mean_squared_error,
@@ -156,13 +201,12 @@ class STAEModel(L.LightningModule):
         expected_outputs = images.clone()
         reconstructed, predicted = self.forward(images)
 
-        match self.regularization:
-            case None:
-                regularization = None
-            case 'l2_encoder_weights':
-                regularization = self.encoder.parameters()
-            case 'l2_model_weights':
-                regularization = self.parameters()
+        if self.regularization == 'l2_encoder_weights':
+            regularization = self.encoder.parameters()
+        elif self.regularization == 'l2_model_weights':
+            regularization = self.parameters()
+        else:
+            regularization = None
 
         losses = self.loss_function(
             expected_outputs, reconstructed, predicted, future_images, regularization
@@ -306,11 +350,14 @@ class Conv3dEncoder(Encoder):
     def __init__(
         self,
         use_2d_bottleneck: list[int] | None = None,
+        use_extra_3dconv: bool = True,
     ) -> None:
         """LSTM Encoder for Temporal Autoencoder. Input shape: `(batch_size, n_time_steps, n_image_channels, image_size, image_size)`"""
         super(Encoder, self).__init__()
 
+        self.use_extra_3dconv = use_extra_3dconv
         self.use_2d_bottleneck = use_2d_bottleneck
+
         if use_2d_bottleneck:
             self.conv2d_layers = nn.ModuleList()
             for out_channels in use_2d_bottleneck:
@@ -319,13 +366,14 @@ class Conv3dEncoder(Encoder):
         self.conv1 = Conv3dEncodeBlock(32)
         self.conv2 = Conv3dEncodeBlock(48)
         self.conv3 = Conv3dEncodeBlock(64)
-        self.conv4 = Conv3dEncodeBlock(64)
+        self.conv4 = Conv3dEncodeBlock(64) if self.use_extra_3dconv else None
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         x = self.conv1(x)
         x = self.conv2(x)
         x = self.conv3(x)
-        x = self.conv4(x)
+        if self.use_extra_3dconv:
+            x = self.conv4(x)  # type: ignore
         if self.use_2d_bottleneck:
             x = x.squeeze(2)
             for conv2d in self.conv2d_layers:
@@ -337,17 +385,20 @@ class Conv3dDecoder(Decoder):
     def __init__(
         self,
         use_2d_bottleneck: list[int] | None = None,
+        use_extra_3dconv: bool = True,
     ) -> None:
         """LSTM Encoder for Temporal Autoencoder. Input shape: `(batch_size, n_time_steps, n_image_channels, image_size, image_size)`"""
         super(Decoder, self).__init__()
 
+        self.use_extra_3dconv = use_extra_3dconv
         self.use_2d_bottleneck = use_2d_bottleneck
+
         if use_2d_bottleneck:
             self.deconv2d_layers = nn.ModuleList()
             for out_channels in use_2d_bottleneck:
                 self.deconv2d_layers.append(Conv2dDecodeBlock(out_channels))
 
-        self.deconv1 = Conv3dDecodeBlock(64)
+        self.deconv1 = Conv3dDecodeBlock(64) if self.use_extra_3dconv else None
         self.deconv2 = Conv3dDecodeBlock(48)
         self.deconv3 = Conv3dDecodeBlock(32)
         self.deconv4 = Conv3dDecodeBlock(16)
@@ -359,7 +410,9 @@ class Conv3dDecoder(Decoder):
             for deconv2d in self.deconv2d_layers:
                 x = deconv2d(x)
             x = x.unsqueeze(2)
-        x = self.deconv1(x)
+
+        if self.use_extra_3dconv:
+            x = self.deconv1(x)  # type: ignore
         x = self.deconv2(x)
         x = self.deconv3(x)
         x = self.deconv4(x)
