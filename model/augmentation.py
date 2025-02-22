@@ -3,7 +3,7 @@ import cv2
 from albumentations.pytorch.transforms import ToTensorV2
 
 
-def pre_transforms(image_size: int = 256) -> list:
+def pre_transforms(image_size: int) -> list:
     return [
         albu.Resize(image_size, image_size, p=1, interpolation=cv2.INTER_NEAREST),
         # albu.ToGray(p=1),
@@ -28,48 +28,6 @@ def hard_transforms() -> list:
         ),
         albu.RandomBrightnessContrast(brightness_limit=0.2, contrast_limit=0.2, p=0.3),
         albu.HorizontalFlip(p=0.3),
-    ]
-
-    return result
-
-
-def resize_transforms(image_size: int = 256, pre_size: int = 512) -> list:
-    """Apply a standard resize or a random crop.
-
-    Parameters:
-    -----------
-    image_size : int, optional
-        The desired size of the output image after transformation.
-        Default is `IMAGE_SIZE` (256).
-
-    pre_size : int, optional
-        The size of the image before transformation.
-        Default is 512.
-
-    Note
-    ----
-    Random crop will crop on an (image_size, image_size) area
-    from a (pre_size, pre_size) area.
-    """
-    random_crop = albu.Compose(
-        [
-            albu.SmallestMaxSize(pre_size, p=1, interpolation=cv2.INTER_NEAREST),
-            albu.RandomCrop(image_size, image_size, p=1),
-        ]
-    )
-
-    rescale = albu.Compose(
-        [albu.Resize(image_size, image_size, p=1, interpolation=cv2.INTER_NEAREST)]
-    )
-
-    result = [
-        albu.OneOf(
-            [
-                random_crop,
-                rescale,
-            ],
-            p=1,
-        )
     ]
 
     return result
