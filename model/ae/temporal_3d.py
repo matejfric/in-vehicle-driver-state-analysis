@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from typing import Any, Literal, TypeAlias, TypedDict
 
 import pytorch_lightning as L
@@ -16,6 +17,8 @@ from .common import Decoder, Encoder
 RegularizationType: TypeAlias = Literal[
     'l2_model_weights', 'l2_encoder_weights', 'contractive'
 ]
+
+logger = logging.getLogger(__name__)
 
 
 class STAELosses(TypedDict):
@@ -76,7 +79,7 @@ class STAELoss(nn.Module):
 
         # Regularization term
         if self.regularization == 'contractive' and model_parameters:
-            encoded = encoded.view(-1).unsqueeze(1)
+            encoded = encoded.view(-1).unsqueeze(1)  # type: ignore
             dh = encoded * (1 - encoded)
             w_sum = torch.tensor(
                 [
@@ -193,6 +196,10 @@ class STAEModel(L.LightningModule):
         self.time_dim_index = time_dim_index
         self.lambda_reg = lambda_reg
         self.regularization = regularization
+        if regularization == 'contractive':
+            logger.warning(
+                'Contractive regularization is not tested, use at your own risk.'
+            )
 
         self.loss_function = STAELoss(lambda_reg, regularization, self.encoder)
         self.metrics_ = dict(
