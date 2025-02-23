@@ -722,7 +722,7 @@ def plot_pr_chart(
     optimal_threshold = thresholds[optimal_idx]
 
     # Plot the precision-recall curve.
-    plt.plot(recall, precision, c='black', label=f'AUC={pr_auc:.3f}')
+    plt.step(recall, precision, c='black', label=f'AUC={pr_auc:.3f}')
     scatter = plt.scatter(recall[1:], precision[1:], c=thresholds, cmap=cmap)
 
     # Plot the no-skill baseline (precision equals the ratio of positive samples).
