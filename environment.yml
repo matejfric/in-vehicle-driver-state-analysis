@@ -244,7 +244,6 @@ dependencies:
   - pixman=0.40.0=h36c2ea0_0
   - platformdirs=4.3.6=pyhd8ed1ab_0
   - ply=3.11=pyhd8ed1ab_2
-  - pre-commit=3.4.0=py312h06a4308_1
   - prometheus_client=0.21.0=pyhd8ed1ab_0
   - prometheus_flask_exporter=0.23.1=pyhd8ed1ab_0
   - prompt-toolkit=3.0.48=pyha770c72_0
@@ -396,6 +395,7 @@ dependencies:
       - papermill==2.6.0
       - pathvalidate==3.2.1
       - pluggy==1.5.0
+      - pre-commit==4.1.0
       - pretrainedmodels==0.7.4
       - pycocotools==2.0.8
       - pytest==8.3.3
@@ -405,6 +405,7 @@ dependencies:
       - requests-toolbelt==1.0.0
       - rich==13.9.2
       - rpds-py==0.20.0
+      - ruff==0.9.7
       - s3transfer==0.10.3
       - safetensors==0.4.5
       - sam2util==1.1.2
