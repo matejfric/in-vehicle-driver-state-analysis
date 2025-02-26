@@ -1,6 +1,8 @@
 # SAM-2 Driver Segmentation Mask Generation
 
-The goal of this submodule is to generate "pseudo-ground-truth" segmentation masks for the MRL Driver dataset.
+The goal of this module is to generate "pseudo-ground-truth" semantic segmentation masks. These masks are used to train a semantic segmentation model in the [Semantic Segmentation](../semantic_segmentation/README.md) module.
+
+This module uses separate virtual environment and dependencies from the main project.
 
 ## SAM-2 Instalation
 
