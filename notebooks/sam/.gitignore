@@ -1,0 +1,8 @@
+segment-anything-2/
+__pycache__/
+jobs/
+.venv/
+*.pt
+*.pth
+*.jpg
+*.png

@@ -1,0 +1,10 @@
+wheel 
+setuptools 
+ninja
+ipykernel
+ultralytics 
+supervision 
+matplotlib 
+ffmpeg-python
+sam2util
+papermill
