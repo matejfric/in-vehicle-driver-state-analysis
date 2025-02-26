@@ -29,13 +29,24 @@ DISTRACTIONS: Final[list[str]] = [
     'driver_actions/texting_right',
     'driver_actions/reach_backseat',
 ]
-OTHER_ACTIONS: Final[list[str]] = [
+DROWSINESS: Final[list[str]] = [
+    'eyes_state/opening',
+    'yawning/Yawning without hand',
+    'eyes_state/close',
+    'eyes_state/open',
+    'yawning/Yawning with hand',
+    'blinks/blinking',
+    'eyes_state/closing',
+]
+OTHER_ACTIONS: Final[list[str]] = DROWSINESS + [
     'gaze_on_road/looking_road',
     'gaze_on_road/not_looking_road',
     'hands_using_wheel/both',
     'talking/talking',
     'driver_actions/talking_to_passenger',
     'driver_actions/safe_drive',
+    'driver_actions/change_gear',  # This is hard to distinguish - one hand
+    'hand_on_gear/hand_on_gear',  # This is hard to distinguish - one hand
 ]
 SOURCE_TYPES: Final[list[str]] = ['rgb', 'depth']
 
