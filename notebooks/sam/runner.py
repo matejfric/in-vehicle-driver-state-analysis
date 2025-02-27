@@ -20,7 +20,22 @@ all_dirs: list[Path] = [
     subdir for sublist in driver_dirs_and_subdirs for subdir in sublist
 ]
 
-# all_dirs = [dir for dir in all_dirs if 'dmd' in str(dir)]
+# sessions = [
+#     'gA_1_s1_2019-03-08T09;31;15+01;00',
+#     'gA_1_s2_2019-03-08T09;21;03+01;00',
+#     'gA_1_s3_2019-03-14T14;31;08+01;00',
+#     'gA_1_s5_2019-03-14T14;26;17+01;00',
+#     'gA_2_s1_2019-03-08T10;01;44+01;00',
+#     'gA_2_s2_2019-03-08T09;50;49+01;00',
+#     'gA_3_s1_2019-03-08T10;27;38+01;00',
+#     'gA_3_s2_2019-03-08T10;16;48+01;00',
+#     'gA_4_s1_2019-03-13T10;36;15+01;00',
+#     'gA_4_s2_2019-03-13T10;43;06+01;00',
+#     'gA_5_s1_2019-03-08T10;57;00+01;00',
+#     'gA_5_s2_2019-03-08T10;46;46+01;00',
+# ]
+# all_dirs = [dir for dir in all_dirs if any(session in str(dir) for session in sessions)]
+
 pprint(all_dirs)
 
 # COMMAND ----------
