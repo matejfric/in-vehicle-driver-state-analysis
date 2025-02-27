@@ -530,6 +530,7 @@ class DatasetPathsLoader:
         valid_transforms: albu.Compose | None = None,
         test_transforms: albu.Compose | None = None,
         ae_input_transforms: albu.Compose | None = None,
+        pin_memory: bool = True,
     ) -> dict:
         """Create dataloaders for train, valid, and test datasets."""
         if any(
@@ -581,6 +582,7 @@ class DatasetPathsLoader:
             shuffle=True,
             num_workers=num_workers,
             drop_last=True,
+            pin_memory=pin_memory,
         )
 
         valid_loader = DataLoader(
@@ -589,6 +591,7 @@ class DatasetPathsLoader:
             shuffle=False,
             num_workers=num_workers,
             drop_last=False,
+            pin_memory=pin_memory,
         )
 
         test_loader = DataLoader(
@@ -597,6 +600,7 @@ class DatasetPathsLoader:
             shuffle=False,
             num_workers=num_workers,
             drop_last=False,
+            pin_memory=pin_memory,
         )
 
         loaders = OrderedDict()
