@@ -34,6 +34,11 @@ def crop_driver_image(image: Image.Image, image_path: Path) -> Image.Image:
     if image_path.stem.startswith('2021_08_28'):
         # `2021_08_28_radovan_night_mask` different camera placement
         return image.crop((250, 0, 250 + image.size[1], image.size[1]))
+
+    if image_path.stem.startswith('dmd_g'):
+        # DMD dataset
+        return pad_to_square(image, fill='black')
+
     return image.crop((0, 0, image.size[1], image.size[1]))
 
 
