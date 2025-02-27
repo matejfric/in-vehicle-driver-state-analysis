@@ -43,6 +43,7 @@ OTHER_ACTIONS: Final[list[str]] = DROWSINESS + [
     'gaze_on_road/not_looking_road',
     'hands_using_wheel/both',
     'talking/talking',
+    'driver_actions/standstill_or_waiting',
     'driver_actions/talking_to_passenger',
     'driver_actions/safe_drive',
     'driver_actions/change_gear',  # This is hard to distinguish - one hand
