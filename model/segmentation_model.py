@@ -75,6 +75,8 @@ class SegmentationModel(L.LightningModule):
             'loss': loss,
             'jaccard_index': (tp).float() / (tp + fp + fn),
             'f1_score': 2 * (tp).float() / (2 * tp + fp + fn),
+            'precision': tp.float() / (tp + fp),
+            'recall': tp.float() / (tp + fn),
             'tp': tp,
             'fp': fp,
             'fn': fn,
