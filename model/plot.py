@@ -101,62 +101,6 @@ def plot_single_prediction(
     plt.show()
 
 
-def plot_predictions(
-    model: LightningModule,
-    data_loader: DataLoader,
-    *,
-    figsize: tuple[int, int] = (16, 5),
-) -> None:
-    n_cols = 5
-    for batch in data_loader:
-        with torch.no_grad():
-            model.eval()
-            logits = model(batch['image'])
-        pr_masks = logits.sigmoid()
-
-        for image, gt_mask, pr_mask, img_file in zip(
-            batch['image'], batch['mask'], pr_masks, batch['filename']
-        ):
-            plt.figure(figsize=figsize)
-
-            original_image = image.numpy().transpose(1, 2, 0)  # convert CHW -> HWC
-
-            plt.subplot(1, n_cols, 1)
-            plt.imshow(original_image)
-            plt.title(f'Image {img_file}')
-            plt.axis('off')
-
-            plt.subplot(1, n_cols, 2)
-            # Squeeze classes dim, because we have only one class
-            plt.imshow(gt_mask.numpy().squeeze(), cmap='gray', vmin=0, vmax=1)
-            plt.title('Ground truth')
-            plt.axis('off')
-
-            plt.subplot(1, n_cols, 3)
-            # Squeeze classes dim, because we have only one class
-            pr_mask_squeeze = pr_mask.numpy().squeeze()
-            plt.imshow(pr_mask_squeeze, cmap='gray', vmin=0, vmax=1)
-            plt.title('Probabilities')
-            plt.axis('off')
-
-            plt.subplot(1, n_cols, 4)
-            plt.imshow(
-                np.where(pr_mask_squeeze > 0.5, 1, 0), cmap='gray', vmin=0, vmax=1
-            )
-            plt.title('Binary Prediction')
-            plt.axis('off')
-
-            plt.subplot(1, n_cols, 5)
-            plt.imshow(original_image)
-            plt.title('Overlay')
-            plt.axis('off')
-            alpha = 0.4
-            plt.imshow(pr_mask_squeeze, cmap='jet', alpha=alpha)
-            # plt.colorbar() # TODO
-
-            plt.show()
-
-
 def plot_predictions_compact(
     model: LightningModule,
     data_loader: DataLoader,
@@ -164,7 +108,8 @@ def plot_predictions_compact(
     threshold: float = 0.5,
     save_path: str | Path | None = None,
     cmap: str = 'winter',
-    limit: int | None = None,
+    limit: int = 10,
+    seed: int | None = None,
 ) -> None:
     """Plot predictions from a model on a dataset.
 
@@ -184,44 +129,32 @@ def plot_predictions_compact(
     cmap : str, default='winter'
         Colormap to use for the overlay.
     """
-    batch_size = data_loader.batch_size if data_loader.batch_size else 1
-    n_data = len(data_loader) * batch_size if limit is None else limit
+    rng = random.Random(seed)
+    indices = range(len(data_loader.dataset))  # type: ignore
+    random_indices = rng.sample(indices, limit)
 
     # Calculate the number of rows needed
-    n_rows = (n_data + n_cols - 1) // n_cols  # Ceiling division
+    n_rows = (limit + n_cols - 1) // n_cols  # Ceiling division
 
-    fig, axes = plt.subplots(n_rows, n_cols, figsize=(n_cols * 4, n_rows * 4))
+    _, axes = plt.subplots(n_rows, n_cols, figsize=(n_cols * 4, n_rows * 4))
     axes = axes.flatten()  # type: ignore
 
     idx = 0
-
-    for batch in data_loader:
+    for item in [data_loader.dataset[idx] for idx in random_indices]:
         with torch.no_grad():
             model.eval()
-            logits = model(batch['image'])
-        pr_masks = logits.sigmoid()
+            logits = model(item['image'])
+        pr_mask = logits.sigmoid()
+        image = item['image']
+        ax = axes[idx]
+        original_image = image.numpy().transpose(1, 2, 0)  # convert CHW -> HWC
+        overlay = pr_mask.numpy().squeeze()
+        overlay[overlay < threshold] = 0
 
-        for image, gt_mask, pr_mask, img_file in zip(
-            batch['image'], batch['mask'], pr_masks, batch['filename']
-        ):
-            if idx >= n_data:  # Ensure we don't go beyond the total number of images
-                break
-
-            ax = axes[idx]
-            original_image = image.numpy().transpose(1, 2, 0)  # convert CHW -> HWC
-            overlay = pr_mask.numpy().squeeze()
-            overlay[overlay < threshold] = 0
-
-            ax.imshow(original_image)
-            ax.imshow(overlay, cmap=cmap, alpha=0.4 * (overlay > 0))
-            ax.set_title(img_file)
-            ax.axis('off')
-            idx += 1
-            if limit and idx >= limit:
-                break
-
-        if limit and idx >= limit:
-            break
+        ax.imshow(original_image)
+        ax.imshow(overlay, cmap=cmap, alpha=0.4 * (overlay > 0))
+        ax.axis('off')
+        idx += 1
 
     # Hide any remaining empty subplots
     for i in range(idx, len(axes)):
