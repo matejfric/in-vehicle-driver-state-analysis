@@ -568,3 +568,74 @@ class ISVC23DecoderV4(Decoder):
 
 
 # endregion
+
+
+class EfficientNetEncoder(Encoder):
+    def __init__(
+        self,
+        image_size: int = 128,
+        n_time_steps: int = 2,
+        n_lstm_neurons: int = 128,
+        latent_dim: int = 128,
+        bidirectional: bool = True,
+    ) -> None:
+        """LSTM Encoder for Temporal Autoencoder with EfficientNet-B0 backbone.
+        Input shape: `(batch_size, n_time_steps, n_image_channels, image_size, image_size)`
+        """
+        super(Encoder, self).__init__()
+
+        # Import necessary modules for EfficientNet
+        from torchvision.models import EfficientNet_B0_Weights, efficientnet_b0
+
+        # Load pre-trained EfficientNet-B0
+        efficient_net = efficientnet_b0(weights=EfficientNet_B0_Weights.IMAGENET1K_V1)
+
+        # Remove the classifier (we only need the feature extractor)
+        self.feature_extractor = nn.Sequential(*list(efficient_net.children())[:-1])
+
+        # Freeze the weights of the feature extractor
+        for param in self.feature_extractor.parameters():
+            param.requires_grad = False
+
+        # Wrap the feature extractor with TimeDistributed
+        self.time_distributed_features = TimeDistributed(
+            self.feature_extractor, n_time_steps
+        )
+
+        # EfficientNet-B0 produces features of shape (1280, 1, 1)
+        feature_size = 1280
+
+        self.lstm = nn.LSTM(
+            feature_size,
+            n_lstm_neurons,
+            batch_first=True,
+            bidirectional=bidirectional,
+        )
+
+        self.fc_latent = nn.Linear(
+            n_lstm_neurons * (2 if bidirectional else 1), latent_dim
+        )
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        # EfficientNet expects 3-channel images, so we need to ensure input is compatible
+        # If input has 1 channel, replicate it to 3 channels
+        batch_size, time_steps, C, H, W = x.size()
+        if C == 1:
+            x = x.repeat(1, 1, 3, 1, 1)
+
+        # Apply EfficientNet feature extractor to each time step
+        x = self.time_distributed_features(x)
+
+        # Flatten the features
+        batch_size, time_steps, C, H, W = x.size()
+        x = x.view(batch_size, time_steps, -1)
+
+        # LSTM processing
+        _, (x, _) = self.lstm(x)
+
+        # Process LSTM output
+        x = x.permute(1, 0, 2)  # Swap the batch and time steps
+        x = x.reshape(batch_size, x.shape[1:].numel())
+        x = self.fc_latent(x)
+
+        return x
