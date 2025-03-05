@@ -15,7 +15,7 @@ all_dirs: list[Path] = [
     subdir for sublist in people_dirs_and_subdirs for subdir in sublist
 ]
 all_dirs = [dir for dir in all_dirs if dir.is_dir() and 'radovan' not in str(dir)]
-job_root = Path('jobs/segmentation')
+job_root = Path(f'jobs/{datetime.now().strftime("%Y-%m-%d")}')
 
 pprint(all_dirs)
 
