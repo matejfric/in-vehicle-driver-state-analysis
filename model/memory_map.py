@@ -69,6 +69,12 @@ def crop_mask_resize_driver(image_path: Path, resize: tuple[int, int]) -> np.nda
     return (image * mask).astype(np.uint8)
 
 
+def binary_mask_resize(image_path: Path, resize: tuple[int, int]) -> np.ndarray:
+    mask_pil = Image.open(image_path).convert('L')
+    mask_pil = crop_driver_image_contains(mask_pil, image_path).resize(resize)
+    return (np.array(mask_pil) > 0).astype(np.uint8) * 255
+
+
 class MemMapWriter:
     def __init__(
         self,

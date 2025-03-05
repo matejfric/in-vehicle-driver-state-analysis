@@ -5,6 +5,7 @@ import numpy as np
 
 from model.memory_map import (
     MemMapWriter,
+    binary_mask_resize,
     crop_mask_resize_driver,
     crop_resize_driver,
     intel_515,  # noqa F401
@@ -31,7 +32,9 @@ def main(args: argparse.Namespace) -> None:
     data_type = np.uint8
 
     # Write the memory-mapped file
-    if args.mask and args.crop:
+    if args.binary_mask:
+        func = binary_mask_resize
+    elif args.mask and args.crop:
         func = crop_mask_resize_driver
     elif args.crop:
         func = crop_resize_driver
@@ -67,7 +70,8 @@ BASE_DIR = Path.home() / 'source/driver-dataset/2024-10-28-driver-all-frames'
 if __name__ == '__main__':
     # Example usage:
     # conda activate torch
-    # $CONDA_PREFIX/bin/python3 run_memory_map_conversion.py --help
+    # $CONDA_PREFIX/bin/python3 notebooks/memory_map/run_memory_map_conversion.py --help
+    # $CONDA_PREFIX/bin/python3 notebooks/memory_map/run_memory_map_conversion.py --binary-mask --source-type masks --resize 64
     parser = argparse.ArgumentParser(
         description='Process images into a memory-mapped file.',
         usage='python3 run_memory_map_conversion.py',
@@ -106,11 +110,18 @@ if __name__ == '__main__':
     parser.add_argument(
         '--source-type', default='depth', help='Source data type directory.'
     )
-    parser.add_argument('--driver', default='geordi', help='Driver name.')
+    parser.add_argument(
+        '--driver', choices=list(DRIVER_MAP.keys()), help='Driver name.'
+    )
     parser.add_argument(
         '--overwrite',
         action='store_true',
         help='Overwrite existing memory-mapped file.',
+    )
+    parser.add_argument(
+        '--binary-mask',
+        action='store_true',
+        help='Use binary mask (default: False).',
     )
 
     args = parser.parse_args()
@@ -123,6 +134,7 @@ if __name__ == '__main__':
         print(f'Crop: {args.crop}')
         print(f'Source Type: {args.source_type}')
         print(f'Overwrite: {args.overwrite}')
+        print(f'Binary Mask: {args.binary_mask}')
         if not single_mode:
             if args.driver:
                 print(f'Driver: {args.driver}')
@@ -163,5 +175,6 @@ if __name__ == '__main__':
                     source_type=args.source_type,
                     driver=driver_key,
                     overwrite=args.overwrite,
+                    binary_mask=args.binary_mask,
                 )
                 main(process_args)
