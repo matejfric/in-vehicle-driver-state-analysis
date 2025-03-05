@@ -2,6 +2,8 @@
 
 ## 1. Installation
 
+- Ubuntu 24.04
+
 ```bash
 conda env create -f environment.yml -n driver-state-analysis
 ```

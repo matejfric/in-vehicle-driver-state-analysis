@@ -1,7 +1,7 @@
 [tool.poetry]
-name = "corrosion"
+name = "in-vehicle-driver-state-analysis"
 version = "0.1.0"
-description = "Semantic segmentation of corrosion images"
+description = "In-Vehicle Driver State Analysis Using Image Segmentation"
 authors = ["Matěj Frič <matej.fric@vsb.cz>"]
 readme = "README.md"
 
@@ -47,6 +47,9 @@ quote-style = "single"
 [tool.ruff.lint.per-file-ignores]
 "*.ipynb" = [
     "E402", # Ignore putting imports at the top of files for notebooks => % autoreload at the top of the file.
+]
+"*.py" = [
+    "E402", # Ignore putting imports at the top of files.
 ]
 
 [tool.pyright]
