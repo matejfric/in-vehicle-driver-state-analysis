@@ -36,3 +36,12 @@ def get_submodule_param_count(model: L.LightningModule) -> dict[str, int]:
             param_counts[f'{name}_parameters'] = num_params
     param_counts['total_parameters'] = sum([x for x in param_counts.values()])
     return param_counts
+
+
+def get_experiment_id(experiment_name: str) -> str:
+    experiment = mlflow.get_experiment_by_name(experiment_name)
+    return (
+        mlflow.create_experiment(experiment_name)
+        if experiment is None
+        else experiment.experiment_id
+    )
