@@ -1,34 +1,5 @@
-[tool.poetry]
-name = "in-vehicle-driver-state-analysis"
-version = "0.1.0"
-description = "In-Vehicle Driver State Analysis Using Image Segmentation"
-authors = ["Matěj Frič <matej.fric@vsb.cz>"]
-readme = "README.md"
-
-[tool.poetry.dependencies]
-python = "^3.10.0" # 3.10.14
-jupyterlab = "^4.0.0"
-dagshub = "^0.3.0"
-mlflow = "^2.12.2"
-albumentations = "^1.4.7"
-pytorch-lightning = "^2.2.4"
-segmentation-models-pytorch = "^0.3.3"
-torch = "^2.3.0"
-torchvision = "^0.18.0"
-torchaudio = "^2.3.0"
-tensorboard = "^2.16.2"
-
-[tool.poetry.group.dev.dependencies]
-pre-commit = "^3.7.1"
-pyright = "^1.1.363"
-ruff = "^0.4.4"
-
-[build-system]
-requires = ["poetry-core"]
-build-backend = "poetry.core.masonry.api"
-
 [tool.ruff]
-target-version = "py310"
+target-version = "py312"
 
 [tool.ruff.lint]
 ignore = [
