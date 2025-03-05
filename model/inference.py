@@ -22,8 +22,10 @@ def init_dagshub(repo_name: str = 'corrosion', repo_owner: str = 'matejfric') ->
     dagshub.init(repo_name, repo_owner, mlflow=True)
 
 
-def load_model_from_dagshub(model_name: str, model_version: int) -> torch.nn.Module:
-    model_uri = f'models:/{model_name}/{model_version}'
+def load_model_from_dagshub(
+    model_name: str, model_version: int | str
+) -> torch.nn.Module:
+    model_uri = f'models:/{model_name}{"/" if isinstance(model_version, int) else "@"}{model_version}'
     model = mlflow.pytorch.load_model(model_uri)
     model.eval()
     return model

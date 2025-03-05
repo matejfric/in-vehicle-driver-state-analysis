@@ -47,6 +47,11 @@ def crop_driver_image_contains(image: Image.Image, image_path: Path) -> Image.Im
     if '2021_08_28' in str(image_path):
         # `2021_08_28_radovan_night_mask` different camera placement
         return image.crop((250, 0, 250 + image.size[1], image.size[1]))
+
+    if 'dmd_g' in str(image_path):
+        # DMD dataset
+        return pad_to_square(image, fill='black')
+
     return image.crop((0, 0, image.size[1], image.size[1]))
 
 

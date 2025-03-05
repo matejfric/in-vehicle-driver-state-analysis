@@ -14,30 +14,30 @@ people_dirs_and_subdirs: list[list[Path]] = [
 all_dirs: list[Path] = [
     subdir for sublist in people_dirs_and_subdirs for subdir in sublist
 ]
+all_dirs = [dir for dir in all_dirs if dir.is_dir() and 'radovan' not in str(dir)]
 job_root = Path('jobs/segmentation')
 
 pprint(all_dirs)
 
 # %%
-
 for dir in all_dirs:
     path_parts = str(dir).split('/')
     output_subdir = path_parts[-2]
     output_name = path_parts[-1]
 
     print(
-        f'{datetime.now().strftime('%Y-%m-%d %H:%M:%S')} processing: {output_subdir}/{output_name}'
+        f'{datetime.now().strftime("%Y-%m-%d %H:%M:%S")} processing: {output_subdir}/{output_name}'
     )
 
     (job_root / output_subdir).mkdir(parents=True, exist_ok=True)
 
     job_dir = job_root / output_subdir / output_name
     pm.execute_notebook(
-        'job_segmentation.ipynb',
+        'job_batch_inference.ipynb',
         f'{str(job_dir)}.ipynb',
         parameters=dict(
             input_dir=str(dir / 'images'),
         ),
     )
 
-# %%
+# COMMAND ----------
