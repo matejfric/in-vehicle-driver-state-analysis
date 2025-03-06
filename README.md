@@ -7,6 +7,7 @@
 ```bash
 conda env create -f environment.yml -n driver-state-analysis
 pip install -e .
+pre-commit install  # optional (development)
 ```
 
 ## 2. High Level Overview
