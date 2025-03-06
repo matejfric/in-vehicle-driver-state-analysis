@@ -181,7 +181,7 @@ class ISVC23DecoderV1(Decoder):
             ),
             # 1x1 convolution
             TimeDistributed(
-                nn.LazyConvTranspose2d(1, kernel_size=7, padding=3),
+                nn.LazyConvTranspose2d(n_image_channels, kernel_size=7, padding=3),
                 n_time_steps,
             ),
         )
@@ -362,7 +362,7 @@ class ISVC23DecoderV2(Decoder):
             ),
             # 1x1 convolution
             TimeDistributed(
-                nn.LazyConvTranspose2d(1, kernel_size=7, padding=3),
+                nn.LazyConvTranspose2d(n_image_channels, kernel_size=7, padding=3),
                 n_time_steps,
             ),
         )

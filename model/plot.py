@@ -176,7 +176,8 @@ def plot_temporal_autoencoder_reconstruction(
     indices: list[int] | None = None,
     random_shuffle: bool = False,
     time_dim_index: Literal[0, 1] = 0,
-    show_heatmap: bool = False,
+    show_heatmap: bool = True,
+    show_metrics: bool = True,
 ) -> None:
     """Plot predictions from a model on a dataset.
 
@@ -194,6 +195,12 @@ def plot_temporal_autoencoder_reconstruction(
         List of indices to plot.
     random_shuffle : bool, default=False
         Shuffle the batches before plotting.
+    time_dim_index : int, default=0
+        Index of the time dimension in the input tensor.
+    show_heatmap : bool, default=True
+        Show the difference heatmap.
+    show_metrics : bool, default=True
+        Show the MSE and Frobenius norm metrics.
     """
     from .dataset import (
         STAEDataset,
@@ -218,9 +225,8 @@ def plot_temporal_autoencoder_reconstruction(
     model.eval()
     device = model.device
     dataset = data_loader.dataset
-    window_size = dataset.window_size
-    n_cols = window_size
-    n_rows = (3 if show_heatmap else 2) * (limit or len(indices))  # type: ignore (either limit or indices is provided)
+    n_cols = 3 if show_heatmap else 2
+    n_rows = limit or len(indices)  # type: ignore (either limit or indices is provided)
     fig, axes = plt.subplots(n_rows, n_cols, figsize=(n_cols * 4, n_rows * 4))
 
     if limit:
@@ -236,35 +242,61 @@ def plot_temporal_autoencoder_reconstruction(
             reconstruction = model(sequence.unsqueeze(0).to(device))[0]  # type: ignore
         reconstruction = reconstruction.cpu()
 
-        for t in range(sequence.shape[time_dim_index]):  # type: ignore
-            if time_dim_index == 0:
-                input_img = sequence[t].numpy().squeeze()
-                reconst_img = reconstruction[t].numpy().squeeze()
-            else:
-                input_img = sequence[:, t].numpy().squeeze()  # type: ignore
-                reconst_img = reconstruction[:, t].numpy().squeeze()
+        t = 0  # temporal index (plot the first frame only)
+        if time_dim_index == 0:
+            input_img = sequence[t].numpy().squeeze()
+            reconst_img = reconstruction[t].numpy().squeeze()
+        else:
+            input_img = sequence[:, t].numpy().squeeze()  # type: ignore
+            reconst_img = reconstruction[:, t].numpy().squeeze()
 
-            mse = np.mean((input_img - reconst_img) ** 2)
-            fro_norm = np.linalg.norm(input_img - reconst_img, ord='fro')
-            diff = np.abs(input_img - reconst_img)
+        if len(input_img.shape) == 3:
+            # Convert CHW -> HWC
+            input_img = input_img.transpose(1, 2, 0)
+            reconst_img = reconst_img.transpose(1, 2, 0)
 
-            # Plot original and reconstructed images
-            axes[2 * row_idx, t].imshow(input_img, cmap='gray')  # type: ignore
-            axes[2 * row_idx + 1, t].imshow(reconst_img, cmap='gray')  # type: ignore
-            axes[2 * row_idx + 1, t].text(  # type: ignore
+        mse = np.mean((input_img - reconst_img) ** 2)
+        fro_norm = np.sqrt(np.sum((input_img - reconst_img) ** 2))
+        diff = np.abs(input_img - reconst_img)
+
+        if len(diff.shape) == 3:
+            diff = diff.mean(axis=-1)
+
+        # Plot original and reconstructed images
+        axes[row_idx, 0].imshow(input_img, cmap='gray')  # type: ignore
+        axes[row_idx, 1].imshow(reconst_img, cmap='gray')  # type: ignore
+        if show_metrics:
+            axes[row_idx, 1].text(  # type: ignore
                 # (0, 0) is lower-left and (1, 1) is upper-right
-                0.95,
-                0.95,
+                0.98,
+                0.98,
                 f'MSE={mse:.3f}\nFRO={fro_norm:.3f}',
                 bbox={'boxstyle': 'round', 'facecolor': 'white', 'pad': 0.5},
                 ha='right',
                 va='top',
-                transform=axes[2 * row_idx + 1, t].transAxes,  # type: ignore
+                transform=axes[row_idx, 1].transAxes,  # type: ignore
+                fontsize=9,
             )
-            if show_heatmap:
-                axes[2 * row_idx + 2, t].imshow(diff, cmap='jet')  # type: ignore
+        if show_heatmap:
+            heatmap = axes[row_idx, 2].imshow(diff, cmap='jet')  # type: ignore
 
-    plt.tight_layout()
+        for i in range(n_cols):
+            axes[row_idx, i].axis('off')  # type: ignore
+
+    # Add column titles
+    col_titles = ['Original', 'Reconstructed']
+    if show_heatmap:
+        col_titles.append('Difference')
+    for col_idx, title in enumerate(col_titles):
+        axes[0, col_idx].set_title(title, pad=20)  # type: ignore
+
+    # Add a colorbar for the heatmap
+    if show_heatmap:
+        height_factor = 1 / n_rows  # Dynamically scale the colorbar height
+        cbar_ax = fig.add_axes([0.92, (1 - height_factor) / 2, 0.02, height_factor])  # type: ignore
+        # cbar_ax = fig.add_axes([0.92, 0.15, 0.02, 0.7])  # [left, bottom, width, height]
+        plt.colorbar(heatmap, cax=cbar_ax, label='Absolute Difference')
+
     if save_path:
         plt.savefig(save_path)
     plt.show()
@@ -371,7 +403,6 @@ def plot_stae_reconstruction(
         # cbar_ax = fig.add_axes([0.92, 0.15, 0.02, 0.7])  # [left, bottom, width, height]
         plt.colorbar(heatmap, cax=cbar_ax, label='Absolute Difference')
 
-    # plt.tight_layout()
     if save_path:
         plt.savefig(save_path)
     plt.show()

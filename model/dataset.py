@@ -158,7 +158,7 @@ class TemporalAutoencoderDataset(Dataset):
     def __init__(
         self,
         memory_map_file: Path | str,
-        memory_map_image_shape: tuple[int, int] = (256, 256),
+        memory_map_image_shape: tuple[int, int] | tuple[int, int, int] = (256, 256),
         window_size: int = 4,
         time_step: int = 1,
         time_dim_index: Literal[0, 1] = 0,
@@ -201,6 +201,10 @@ class TemporalAutoencoderDataset(Dataset):
         Seq3        x   x
         ```
         """
+        # Remove the channel dimension if it is 1
+        if len(memory_map_image_shape) == 3 and memory_map_image_shape[2] == 1:
+            memory_map_image_shape = memory_map_image_shape[:2]
+
         self.memory_map_file = memory_map_file
         self.memory_map = MemMapReader(
             memory_map_file, memory_map_image_shape, dtype=dtype
