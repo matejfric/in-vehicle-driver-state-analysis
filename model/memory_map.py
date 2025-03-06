@@ -116,6 +116,10 @@ class MemMapWriter:
             image = self.func(image_path, self.resize)
             yield image
 
+    def __getitem__(self, index: int) -> np.ndarray:
+        """Returns the processed image at the specified index."""
+        return self.func(self.image_paths[index], self.resize)
+
     def __len__(self) -> int:
         """Returns the number of images."""
         return len(self.image_paths)
@@ -123,8 +127,22 @@ class MemMapWriter:
     def __repr__(self) -> str:
         return f'MemMap with {len(self):,} images:\n- Output file: {self.output_file}\n- Resize: {self.resize}\n- dtype: {self.dtype.__name__}\n- func: {self.func.__name__}'
 
-    def write(self, overwrite: bool = False) -> None:
-        """Process images with `func` and write them to the memory-mapped file."""
+    def write(self, overwrite: bool = False, num_workers: int | None = None) -> None:
+        """Process images with `func` and write them to the memory-mapped file using multithreading.
+
+        Parameters
+        ----------
+        overwrite: bool, default=False
+            Whether to overwrite the output file if it exists.
+        num_workers: int, default=None
+            Number of worker threads to use. If None, uses the number of CPU cores.
+        """
+        import concurrent.futures
+        import os
+
+        # Default to number of CPU cores if num_workers not specified
+        if num_workers is None:
+            num_workers = os.cpu_count() or 4
 
         if self.output_file.exists():
             if overwrite:
@@ -144,10 +162,47 @@ class MemMapWriter:
             else (len(self), *self.resize),
         )
 
-        for i, image in tqdm(enumerate(self()), total=len(self), desc='Saving memmap'):
-            self.memmap_array[i] = image  # type: ignore
+        # Process images in chunks for better performance
+        def process_chunk(chunk: list[int]) -> list[tuple[int, np.ndarray]]:
+            results = []
+            for idx in chunk:
+                if idx < len(self):
+                    try:
+                        image = self[idx]  # Get the processed image
+                        results.append((idx, image))
+                    except Exception as e:
+                        print(f'Error processing image at index {idx}: {e}')
+            return results
 
-        self.memmap_array.flush()  # type: ignore
+        # Create chunks of indices to process
+        total_images = len(self)
+        indices = list(range(total_images))
+        # Create more chunks than workers for better load balancing
+        chunk_size = max(1, total_images // (num_workers * 4))
+        chunks = [
+            indices[i : i + chunk_size] for i in range(0, total_images, chunk_size)
+        ]
+
+        processed_count = 0
+
+        # Use ThreadPoolExecutor for I/O bound tasks
+        with concurrent.futures.ThreadPoolExecutor(max_workers=num_workers) as executor:
+            # Submit all chunks for processing
+            future_to_chunk = {
+                executor.submit(process_chunk, chunk): chunk for chunk in chunks
+            }
+
+            # Use tqdm for progress tracking
+            with tqdm(total=total_images, desc='Saving memmap') as pbar:
+                for future in concurrent.futures.as_completed(future_to_chunk):
+                    results = future.result()
+                    for idx, image in results:
+                        self.memmap_array[idx] = image  # Write to memmap
+                        processed_count += 1
+                        pbar.update(1)
+
+        # Ensure all data is written to disk
+        self.memmap_array.flush()
 
 
 class MemMapReader:
