@@ -50,7 +50,12 @@ def main(args: argparse.Namespace) -> None:
         output_file = str(output_file).replace('.dat', '_no_mask.dat')
 
     mm_writer = MemMapWriter(
-        image_paths, output_file, func, resize=(resize, resize), dtype=data_type
+        image_paths,
+        output_file,
+        func,
+        resize=(resize, resize),
+        dtype=data_type,
+        channels=args.channels,
     )
     mm_writer.write(overwrite=args.overwrite)
     print(mm_writer)
@@ -70,8 +75,9 @@ BASE_DIR = Path.home() / 'source/driver-dataset/2024-10-28-driver-all-frames'
 if __name__ == '__main__':
     # Example usage:
     # conda activate torch
-    # $CONDA_PREFIX/bin/python3 notebooks/memory_map/run_memory_map_conversion.py --help
-    # $CONDA_PREFIX/bin/python3 notebooks/memory_map/run_memory_map_conversion.py --binary-mask --source-type masks --resize 64
+    # $CONDA_PREFIX/bin/python3 notebooks/memory_map/mrl.py --help
+    # $CONDA_PREFIX/bin/python3 notebooks/memory_map/mrl.py --binary-mask --source-type masks --resize 64
+    # $CONDA_PREFIX/bin/python3 notebooks/memory_map/mrl.py --source-type images --resize 64 --channels 3 --mask --crop --extension jpg
     parser = argparse.ArgumentParser(
         description='Process images into a memory-mapped file.',
         usage='python3 run_memory_map_conversion.py',
@@ -123,6 +129,11 @@ if __name__ == '__main__':
         action='store_true',
         help='Use binary mask (default: False).',
     )
+    parser.add_argument(
+        '--channels',
+        type=int,
+        help='Number of channels in the image (default: None).',
+    )
 
     args = parser.parse_args()
 
@@ -135,6 +146,7 @@ if __name__ == '__main__':
         print(f'Source Type: {args.source_type}')
         print(f'Overwrite: {args.overwrite}')
         print(f'Binary Mask: {args.binary_mask}')
+        print(f'Channels: {args.channels}')
         if not single_mode:
             if args.driver:
                 print(f'Driver: {args.driver}')
@@ -176,5 +188,6 @@ if __name__ == '__main__':
                     driver=driver_key,
                     overwrite=args.overwrite,
                     binary_mask=args.binary_mask,
+                    channels=args.channels,
                 )
                 main(process_args)
