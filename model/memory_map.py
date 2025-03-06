@@ -66,6 +66,9 @@ def crop_mask_resize_driver(image_path: Path, resize: tuple[int, int]) -> np.nda
     image = np.array(image_pil).astype(np.float32)
     mask = (np.array(mask_pil) > 0).astype(np.float32)
 
+    if len(image.shape) == 3:
+        mask = mask[..., np.newaxis]
+
     return (image * mask).astype(np.uint8)
 
 
@@ -83,6 +86,7 @@ class MemMapWriter:
         func: Callable = crop_resize_driver,
         resize: tuple[int, int] = (256, 256),
         dtype: type = np.uint8,
+        channels: int | None = None,
     ) -> None:
         """Initialize MemMapWriter with parameters to process and save images to a memory-mapped file.
 
@@ -104,6 +108,7 @@ class MemMapWriter:
             Path(output_file) if isinstance(output_file, str) else output_file
         )
         self.dtype = dtype
+        self.channels = channels
         self.memmap_array = ...
 
     def __call__(self) -> Generator[np.ndarray, None, None]:
@@ -134,7 +139,9 @@ class MemMapWriter:
             self.output_file,
             dtype=self.dtype,
             mode='w+',
-            shape=(len(self), *self.resize),
+            shape=(len(self), *self.resize, self.channels)
+            if self.channels
+            else (len(self), *self.resize),
         )
 
         for i, image in tqdm(enumerate(self()), total=len(self), desc='Saving memmap'):
@@ -147,7 +154,7 @@ class MemMapReader:
     def __init__(
         self,
         memmap_file: Path | str,
-        shape: tuple[int, int],
+        shape: tuple[int, int] | tuple[int, int, int],
         dtype: type = np.uint8,
     ) -> None:
         """Initialize MemMapReader with parameters to read images from a memory-mapped file.
