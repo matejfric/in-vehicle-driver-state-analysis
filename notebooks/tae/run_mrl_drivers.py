@@ -12,7 +12,7 @@ for driver in drivers:
     job_dir = job_dir_root / driver
     job_dir.parent.mkdir(parents=True, exist_ok=True)
     pm.execute_notebook(
-        'temporal_anomaly_detection.ipynb',
+        'mrl.ipynb',
         f'{str(job_dir)}.ipynb',
         parameters=dict(
             driver=driver,
