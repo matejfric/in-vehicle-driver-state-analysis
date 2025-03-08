@@ -260,6 +260,11 @@ def plot_temporal_autoencoder_reconstruction(
         diff = np.abs(input_img - reconst_img)
 
         if len(diff.shape) == 3:
+            if diff.shape[-1] > 3:
+                # RGBD or RGBDM images
+                # NOTE: We might want to plot RGB and depth images separately
+                input_img = input_img[..., :3]
+                reconst_img = reconst_img[..., :3]
             diff = diff.mean(axis=-1)
 
         # Plot original and reconstructed images
