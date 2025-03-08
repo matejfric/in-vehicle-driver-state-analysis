@@ -78,6 +78,51 @@ def binary_mask_resize(image_path: Path, resize: tuple[int, int]) -> np.ndarray:
     return (np.array(mask_pil) > 0).astype(np.uint8) * 255
 
 
+def rgbd_resize_crop_driver(image_path: Path, resize: tuple[int, int]) -> np.ndarray:
+    """Assumes `masks` and `depth` directories are in the same directory as the images."""
+    image_pil = Image.open(image_path)
+    image_pil = crop_driver_image_contains(image_pil, image_path)
+    image_pil = image_pil.resize(resize)
+
+    mask_path = image_path.parent.parent / 'masks' / image_path.with_suffix('.png').name
+    mask_pil = Image.open(mask_path).convert('L').resize(resize)
+
+    depth_path = (
+        image_path.parent.parent / 'depth' / image_path.with_suffix('.png').name
+    )
+    depth_pil = Image.open(depth_path).convert('L').resize(resize)
+
+    image = np.array(image_pil).astype(np.float32)
+    mask = (np.array(mask_pil) > 0).astype(np.float32)[..., np.newaxis]
+    depth = np.array(depth_pil)[..., np.newaxis]
+
+    masked_image = (image * mask).astype(np.uint8)
+    masked_depth = (depth * mask).astype(np.uint8)
+
+    return np.concatenate([masked_image, masked_depth], axis=-1)
+
+
+def rgbdm_resize_crop_driver(image_path: Path, resize: tuple[int, int]) -> np.ndarray:
+    """Assumes `masks` and `depth` directories are in the same directory as the images."""
+    image_pil = Image.open(image_path)
+    image_pil = crop_driver_image_contains(image_pil, image_path)
+    image_pil = image_pil.resize(resize)
+
+    mask_path = image_path.parent.parent / 'masks' / image_path.with_suffix('.png').name
+    mask_pil = Image.open(mask_path).convert('L').resize(resize)
+
+    depth_path = (
+        image_path.parent.parent / 'depth' / image_path.with_suffix('.png').name
+    )
+    depth_pil = Image.open(depth_path).convert('L').resize(resize)
+
+    image = np.array(image_pil).astype(np.float32)
+    depth = np.array(depth_pil)[..., np.newaxis]
+    mask = (np.array(mask_pil) > 0).astype(np.float32)[..., np.newaxis]
+
+    return np.concatenate([image, depth, mask], axis=-1)
+
+
 class MemMapWriter:
     def __init__(
         self,

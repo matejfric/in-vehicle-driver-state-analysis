@@ -12,17 +12,21 @@ from model.memory_map import (
     intel_515_cv,
     mask_resize_driver,
     resize_driver,
+    rgbd_resize_crop_driver,
+    rgbdm_resize_crop_driver,
 )
 
 
 def main(args: argparse.Namespace) -> None:
     image_dir = Path(args.path)
     resize = args.resize
-    output_file = (
-        args.output
-        if args.output
-        else image_dir.parent / 'memory_maps' / f'{image_dir.name}_{resize}.dat'
+    channels = args.channels
+    mem_map_name = (
+        f'{args.output_name}_{resize}.dat'
+        if args.output_name
+        else f'{image_dir.name}_{resize}.dat'
     )
+    output_file = image_dir.parent / 'memory_maps' / mem_map_name
 
     # Gather all image paths in the specified directory
     image_paths = sorted(image_dir.glob(f'*.{args.extension}'), key=lambda x: x.stem)
@@ -34,6 +38,13 @@ def main(args: argparse.Namespace) -> None:
     # Write the memory-mapped file
     if args.binary_mask:
         func = binary_mask_resize
+        channels = 1
+    elif args.rgbd:
+        func = rgbd_resize_crop_driver
+        channels = 4
+    elif args.rgbdm:
+        func = rgbdm_resize_crop_driver
+        channels = 5
     elif args.mask and args.crop:
         func = crop_mask_resize_driver
     elif args.crop:
@@ -45,6 +56,7 @@ def main(args: argparse.Namespace) -> None:
         func = intel_515_cv
         output_file = str(output_file).replace('.dat', '_no_mask_515.dat')
         data_type = np.float32
+        channels = 1
     else:
         func = resize_driver
         output_file = str(output_file).replace('.dat', '_no_mask.dat')
@@ -55,7 +67,7 @@ def main(args: argparse.Namespace) -> None:
         func,
         resize=(resize, resize),
         dtype=data_type,
-        channels=args.channels,
+        channels=channels,
     )
     mm_writer.write(overwrite=args.overwrite)
     print(mm_writer)
@@ -67,7 +79,7 @@ DRIVER_MAP = {
     'michal': '2021_11_05_michal_enyaq',
     'dans': '2021_11_18_dans_enyaq',
     'jakub': '2021_11_18_jakubh_enyaq',
-    'radovan': '2024_07_02_radovan_enyaq',
+    # 'radovan': '2024_07_02_radovan_enyaq',
 }
 TYPES = ['normal', 'anomal', 'anomal_182201', 'anomal_181149']
 BASE_DIR = Path.home() / 'source/driver-dataset/2024-10-28-driver-all-frames'
@@ -86,9 +98,7 @@ if __name__ == '__main__':
         '--path',
         help='Path to the directory containing images (single mode).',
     )
-    parser.add_argument(
-        '--output', help='Path to save the output memory-mapped file (single mode).'
-    )
+    parser.add_argument('--output-name', help='Prefix of the memory-mapped file.')
     parser.add_argument(
         '--resize', type=int, default=128, help='Size to resize images (default: 128).'
     )
@@ -134,6 +144,16 @@ if __name__ == '__main__':
         type=int,
         help='Number of channels in the image (default: None).',
     )
+    parser.add_argument(
+        '--rgbd',
+        action='store_true',
+        help='Use RGBD images (default: False).',
+    )
+    parser.add_argument(
+        '--rgbdm',
+        action='store_true',
+        help='Use RGBDM images (default: False).',
+    )
 
     args = parser.parse_args()
 
@@ -147,6 +167,9 @@ if __name__ == '__main__':
         print(f'Overwrite: {args.overwrite}')
         print(f'Binary Mask: {args.binary_mask}')
         print(f'Channels: {args.channels}')
+        print(f'RGBD: {args.rgbd}')
+        print(f'RGBDM: {args.rgbdm}')
+        print(f'Output Name: {args.output_name}')
         if not single_mode:
             if args.driver:
                 print(f'Driver: {args.driver}')
@@ -178,7 +201,7 @@ if __name__ == '__main__':
                 print(f'Processing: {driver_key} - {normal_or_anomal}')
                 process_args = argparse.Namespace(
                     path=input_path,
-                    output=None,
+                    output_name=args.output_name,
                     resize=args.resize,
                     extension=args.extension,
                     mask=args.mask,
@@ -189,5 +212,7 @@ if __name__ == '__main__':
                     overwrite=args.overwrite,
                     binary_mask=args.binary_mask,
                     channels=args.channels,
+                    rgbd=args.rgbd,
+                    rgbdm=args.rgbdm,
                 )
                 main(process_args)
