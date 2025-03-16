@@ -31,15 +31,15 @@ DISTRACTIONS: Final[list[str]] = [
     'driver_actions/texting_left',
     'driver_actions/texting_right',
     'driver_actions/reach_backseat',
+    'yawning/Yawning with hand',
 ]
 DROWSINESS: Final[list[str]] = [
+    'blinks/blinking',
     'eyes_state/opening',
-    'yawning/Yawning without hand',
     'eyes_state/close',
     'eyes_state/open',
-    'yawning/Yawning with hand',
-    'blinks/blinking',
     'eyes_state/closing',
+    'yawning/Yawning without hand',
 ]
 OTHER_ACTIONS: Final[list[str]] = DROWSINESS + [
     'gaze_on_road/looking_road',
