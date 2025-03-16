@@ -207,14 +207,15 @@ def extract_frames(
 
             frame_key = str(frame_index)
             is_anomaly = False
-            frame_annotations = frames_data[frame_key]
-            frame_actions = frame_annotations.get('actions')
-            if frame_actions:
-                for action_key, _ in frame_actions.items():
-                    if distraction_mapping[int(action_key)] == 1:
-                        # One of the annotated actions for the frame is a distraction
-                        is_anomaly = True
-                        break
+            frame_annotations = frames_data.get(frame_key)
+            if frame_annotations:
+                frame_actions = frame_annotations.get('actions')
+                if frame_actions:
+                    for action_key, _ in frame_actions.items():
+                        if distraction_mapping[int(action_key)] == 1:
+                            # One of the annotated actions for the frame is a distraction
+                            is_anomaly = True
+                            break
 
             # Create new sequence directory if anomaly status changed
             if previous_is_anomaly is None or is_anomaly != previous_is_anomaly:
