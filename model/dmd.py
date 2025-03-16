@@ -18,6 +18,9 @@ DISTRACTIONS: Final[list[str]] = [
     'hands_using_wheel/only_right',
     'hands_using_wheel/only_left',
     'hands_using_wheel/none',
+    'hands_on_wheel/only_left',
+    'hands_on_wheel/only_right',
+    'hands_on_wheel/none',
     'driver_actions/radio',
     'driver_actions/drinking',
     'driver_actions/reach_side',
@@ -42,12 +45,17 @@ OTHER_ACTIONS: Final[list[str]] = DROWSINESS + [
     'gaze_on_road/looking_road',
     'gaze_on_road/not_looking_road',
     'hands_using_wheel/both',
+    'hands_on_wheel/both_hands',
     'talking/talking',
     'driver_actions/standstill_or_waiting',
     'driver_actions/talking_to_passenger',
     'driver_actions/safe_drive',
     'driver_actions/change_gear',  # This is hard to distinguish - one hand
     'hand_on_gear/hand_on_gear',  # This is hard to distinguish - one hand
+    'moving_hands/not_moving',
+    'moving_hands/moving',
+    'transition/taking control',
+    'transition/giving control',
 ]
 SOURCE_TYPES: Final[list[str]] = ['rgb', 'depth']
 
@@ -200,11 +208,13 @@ def extract_frames(
             frame_key = str(frame_index)
             is_anomaly = False
             frame_annotations = frames_data[frame_key]
-            for action_key, _ in frame_annotations['actions'].items():
-                if distraction_mapping[int(action_key)] == 1:
-                    # One of the annotated actions for the frame is a distraction
-                    is_anomaly = True
-                    break
+            frame_actions = frame_annotations.get('actions')
+            if frame_actions:
+                for action_key, _ in frame_actions.items():
+                    if distraction_mapping[int(action_key)] == 1:
+                        # One of the annotated actions for the frame is a distraction
+                        is_anomaly = True
+                        break
 
             # Create new sequence directory if anomaly status changed
             if previous_is_anomaly is None or is_anomaly != previous_is_anomaly:
