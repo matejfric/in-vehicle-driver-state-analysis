@@ -17,10 +17,19 @@ session_subdirs: list[Path] = [
 all_subdirs: list[list[Path]] = [
     list(subdir.glob('*')) for subdir in session_subdirs if subdir.is_dir()
 ]
-all_dirs = sorted([dir for subdirs in all_subdirs for dir in subdirs])
+all_dirs = sorted(
+    [
+        dir
+        for subdirs in all_subdirs
+        for dir in subdirs
+        if (dir / 'rgb').is_dir() and len(list((dir / 'rgb').glob('*.jpg'))) > 0
+    ]
+)
 job_root = Path(f'jobs/dmd/{datetime.now().strftime("%Y-%m-%d")}')
 
-pprint(all_dirs)
+print(f'Job root: {job_root}')
+print(f'Found {len(all_dirs)} sequences. Example:')
+pprint(all_dirs[0:5])
 
 # %%
 for dir in (pbar := tqdm.tqdm(all_dirs)):
