@@ -37,6 +37,7 @@ for dir in all_dirs:
         f'{str(job_dir)}.ipynb',
         parameters=dict(
             input_dir=str(dir / 'images'),
+            dataset='mrl',
         ),
     )
 

@@ -2,16 +2,13 @@ import logging
 from collections.abc import Iterator, Sequence
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Literal, TypeAlias, TypedDict
+from typing import Literal, TypedDict
 
 import cv2 as cv
 import numpy as np
 from PIL import Image, ImageOps
 
 logger = logging.getLogger(__name__)
-
-ModelStages: TypeAlias = Literal['train', 'valid', 'test']
-
 
 DRIVER_MAPPING: dict[str, int] = {
     '2021_08_31_geordi_enyaq': 1,
@@ -21,6 +18,8 @@ DRIVER_MAPPING: dict[str, int] = {
     '2021_11_18_dans_enyaq': 6,
     '2024_07_02_radovan_enyaq': -1,  # Not in the original papers
 }
+
+type ModelStages = Literal['train', 'valid', 'test']
 
 
 class BatchSizeDict(TypedDict):
