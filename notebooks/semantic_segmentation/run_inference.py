@@ -36,6 +36,8 @@ for dir in all_dirs:
         'job_batch_inference.ipynb',
         f'{str(job_dir)}.ipynb',
         parameters=dict(
+            model_name='pytorch-2025-03-17-190559-unetplusplus-efficientnet-b1',
+            model_version='champion',
             input_dir=str(dir / 'images'),
             dataset='mrl',
         ),

@@ -39,11 +39,13 @@ for dir in (pbar := tqdm.tqdm(all_dirs)):
     job_dir = job_root / session / class_name / sequence
     pbar.set_postfix_str(f'{session}/{class_name}/{sequence}')
 
-    job_dir.mkdir(parents=True, exist_ok=True)
+    job_dir.parent.mkdir(parents=True, exist_ok=True)
     pm.execute_notebook(
         'job_batch_inference.ipynb',
         f'{str(job_dir)}.ipynb',
         parameters=dict(
+            model_name='pytorch-2025-03-17-190559-unetplusplus-efficientnet-b1',
+            model_version='champion',
             input_dir=str(dir / 'rgb'),
             dataset='dmd',
         ),
