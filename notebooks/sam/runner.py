@@ -19,12 +19,14 @@ driver_dirs_and_subdirs: list[list[Path]] = [
 all_dirs: list[Path] = [
     subdir for sublist in driver_dirs_and_subdirs for subdir in sublist
 ]
-
 # sessions = [
 #     'gA_1_s1_2019-03-08T09;31;15+01;00',
 #     'gA_1_s2_2019-03-08T09;21;03+01;00',
 #     'gA_1_s3_2019-03-14T14;31;08+01;00',
-#     'gA_1_s5_2019-03-14T14;26;17+01;00',
+#     'gA_1_s4_2019-03-22T11;49;58+01;00',
+#     'gA_1_s5_2019-03-14T14;26;17+01;00',  # drowsiness
+#     'gA_1_s6_2019-03-08T09;15;15+01;00',
+#     'gA_1_s6_2019-03-22T11;59;56+01;00',
 #     'gA_2_s1_2019-03-08T10;01;44+01;00',
 #     'gA_2_s2_2019-03-08T09;50;49+01;00',
 #     'gA_3_s1_2019-03-08T10;27;38+01;00',
@@ -60,3 +62,5 @@ for dir in all_dirs:
             image_dir=str(dir),
         ),
     )
+
+# COMMAND ----------
