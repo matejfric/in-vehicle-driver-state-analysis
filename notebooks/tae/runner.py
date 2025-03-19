@@ -1,15 +1,27 @@
 # %%
 from datetime import datetime
 from pathlib import Path
+from pprint import pprint
 
 import papermill as pm
 
 # %%
 job_dir_root = Path(f'jobs/{datetime.now().strftime("%Y-%m-%d-%H%M")}')
-drivers = ['geordi', 'poli', 'michal', 'dans', 'jakub']
-source_types = ['rgbd', 'rgbdm']
+drivers = [1]  # ['geordi', 'poli', 'michal', 'dans', 'jakub']
+source_types = ['masks']  # ['rgbd', 'rgbdm']
 image_sizes = [64]
 latent_dims = [128]
+dataset = 'dmd'
+
+pprint(
+    dict(
+        dataset=dataset,
+        drivers=drivers,
+        source_types=source_types,
+        image_sizes=image_sizes,
+        latent_dims=latent_dims,
+    )
+)
 
 # %%
 for driver in drivers:
@@ -17,18 +29,21 @@ for driver in drivers:
         for image_size in image_sizes:
             for latent_dim in latent_dims:
                 print(
-                    f'{datetime.now().strftime("%Y-%m-%d %H:%M:%S")} processing: {driver} | {source_type} | {image_size} | {latent_dim}'
+                    f'{datetime.now().strftime("%Y-%m-%d %H:%M:%S")} processing: driver={driver} | type={source_type} | size={image_size} | latent={latent_dim}'
                 )
-                job_dir = job_dir_root / driver
+                job_dir = job_dir_root / (
+                    driver if isinstance(driver, str) else f'driver_{driver}'
+                )
                 job_dir.parent.mkdir(parents=True, exist_ok=True)
                 pm.execute_notebook(
-                    'mrl.ipynb',
+                    'train.ipynb',
                     f'{str(job_dir)}_{source_type}_{image_size}_{latent_dim}.ipynb',
                     parameters=dict(
                         driver=driver,
                         source_type=source_type,
                         image_size=image_size,
                         latent_dim=latent_dim,
+                        dataset=dataset,
                     ),
                 )
 

@@ -186,7 +186,7 @@ def plot_temporal_autoencoder_reconstruction(
     model : LightningModule
         PyTorch Lightning model.
     data_loader : DataLoader
-        PyTorch DataLoader.
+        PyTorch DataLoader for STAEDataset, TemporalAutoencoderDataset, or TemporalAutoencoderDatasetDMD
     save_path : str | Path | None, default=None
         Path to save the plot.
     limit : int | None, default=None
@@ -202,19 +202,6 @@ def plot_temporal_autoencoder_reconstruction(
     show_metrics : bool, default=True
         Show the MSE and Frobenius norm metrics.
     """
-    from .dataset import (
-        STAEDataset,
-        TemporalAutoencoderDataset,
-        TemporalAutoencoderDatasetDMD,
-    )
-
-    if not isinstance(
-        data_loader.dataset,
-        TemporalAutoencoderDataset | STAEDataset | TemporalAutoencoderDatasetDMD,
-    ):
-        raise ValueError(
-            f'DataLoader must be using either `TemporalAutoencoderDataset` or `STAEDataset`. Actual: `{type(data_loader.dataset)}`.'
-        )
     if not limit and not indices:
         raise ValueError('Either `limit` or `indices` must be provided.')
     if limit and indices:
@@ -231,7 +218,7 @@ def plot_temporal_autoencoder_reconstruction(
 
     if limit:
         indices = (
-            random.sample(range(len(data_loader.dataset)), limit)
+            random.sample(range(len(data_loader.dataset)), limit)  # type: ignore
             if random_shuffle
             else list(range(limit))
         )

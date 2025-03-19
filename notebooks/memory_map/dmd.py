@@ -1,41 +1,53 @@
 import argparse
+from collections.abc import Callable
 from pathlib import Path
 from typing import Literal
 
-from model.dmd import CATEGORIES, ROOT
-from model.memory_map import MemMapWriter, resize_driver
+import numpy as np
+
+from model.dmd import CATEGORIES, DRIVER_SESSION_MAPPING, ROOT
+from model.memory_map import MemMapWriter
+from model.prep_func_builder import PreprocessingFunctionBuilder
 
 
-def _prepare_train(session_path: Path, resize: int, source: str) -> None:
+def _prepare_train(
+    session_path: Path,
+    resize: int,
+    source: str,
+    func: Callable[[Path, tuple[int, int]], np.ndarray],
+    overwrite: bool = False,
+) -> None:
     sequencies: list[list[Path]] = [
         list((session_path / cat_dir).glob('*')) for cat_dir in CATEGORIES
     ]
     all_dirs: list[Path] = [
         subdir / source for sublist in sequencies for subdir in sublist
     ]
-
+    all_dirs = [dir for dir in all_dirs if dir.is_dir()]
+    src_extension: Literal['jpg', 'png'] = 'jpg' if source == 'rgb' else 'png'
     for dir in all_dirs:
         # Gather all image paths in the specified directory
-        image_paths = sorted(dir.glob(f'*.{args.extension}'), key=lambda x: x.stem)
+        image_paths = sorted(dir.glob(f'*.{src_extension}'), key=lambda x: x.stem)
         if not image_paths:
             raise ValueError(f'No images found in {dir}.')
 
-        output_file = (
-            args.output
-            if args.output
-            else dir.parent / 'memory_maps' / f'{source}_{resize}.dat'
-        )
+        output_file = dir.parent / 'memory_maps' / f'{source}_{resize}.dat'
 
         # Write the memory-mapped file
         mm_writer = MemMapWriter(
-            image_paths, output_file, func=resize_driver, resize=(resize, resize)
+            image_paths, output_file, func=func, resize=(resize, resize)
         )
-        mm_writer.write()
+        mm_writer.write(overwrite=overwrite)
         print(mm_writer)
 
 
-def _prepare_test(session_path: Path, resize: int, source: str) -> None:
-    session_path = session_path
+def _prepare_test(
+    session_path: Path,
+    resize: int,
+    source: str,
+    func: Callable[[Path, tuple[int, int]], np.ndarray],
+    overwrite: bool = False,
+) -> None:
     src_extension: Literal['jpg', 'png'] = 'jpg' if source == 'rgb' else 'png'
     sequencies: list[list[Path]] = [
         list((session_path / cat_dir).glob('*')) for cat_dir in CATEGORIES
@@ -43,6 +55,7 @@ def _prepare_test(session_path: Path, resize: int, source: str) -> None:
     all_dirs: list[Path] = [
         subdir / source for sublist in sequencies for subdir in sublist
     ]
+    all_dirs = [dir for dir in all_dirs if dir.is_dir()]
     print(f'Found {len(all_dirs)} directories.')
 
     image_paths = sorted(
@@ -56,66 +69,107 @@ def _prepare_test(session_path: Path, resize: int, source: str) -> None:
 
     # Write the memory-mapped file
     mm_writer = MemMapWriter(
-        image_paths, output_file, func=resize_driver, resize=(resize, resize)
+        image_paths, output_file, func=func, resize=(resize, resize)
     )
-    mm_writer.write(overwrite=True)
+    mm_writer.write(overwrite=overwrite)
     print(mm_writer)
 
 
 def main(args: argparse.Namespace) -> None:
-    session_path = ROOT / args.session
+    if args.driver:
+        session_paths = [
+            ROOT / session for session in DRIVER_SESSION_MAPPING[args.driver]
+        ]
+    elif args.session:
+        session_paths = [ROOT / args.session]
+    else:
+        raise ValueError('Please specify either a driver or a session.')
+
     resize = args.resize
     source = args.type
     stage = args.stage
+    overwrite = args.overwrite
+
+    prep_func_builder = PreprocessingFunctionBuilder().from_pillow().pad_square()
+    if args.add_depth_channel:
+        prep_func_builder = prep_func_builder.add_depth_channel()
+    if args.mask:
+        prep_func_builder = prep_func_builder.apply_mask()
+    if args.multiply:
+        prep_func_builder = prep_func_builder.multiply(args.multiply)
+
+    func = prep_func_builder.build()
+
+    def prep_train() -> None:
+        for session_path in session_paths:
+            _prepare_train(session_path, resize, source, func, overwrite)
+
+    def prep_test() -> None:
+        for session_path in session_paths:
+            _prepare_test(session_path, resize, source, func, overwrite)
 
     if stage == 'train':
-        _prepare_train(session_path, resize, source)
+        prep_train()
     elif stage == 'test':
-        _prepare_test(session_path, resize, source)
+        prep_test()
     else:
-        _prepare_train(session_path, resize, source)
-        _prepare_test(session_path, resize, source)
+        prep_train()
+        prep_test()
 
 
 if __name__ == '__main__':
     # Example usage:
-    # conda activate torch
-    # $CONDA_PREFIX/bin/python3 run_memory_map_conversion_dmd.py --session "gA_1_s1_2019-03-08T09;31;15+01;00" --resize 128 --type depth --stage test
-    # $CONDA_PREFIX/bin/python3 run_memory_map_conversion_dmd.py --session "gA_1_s2_2019-03-08T09;21;03+01;00" --resize 128 --type video_depth_anything
-    # gA_1_s3_2019-03-14T14;31;08+01;00
+    # 1. Activate the virtual environment
+    # $ conda activate torch
+    # 2. For binary masks:
+    # $ python3 notebooks/memory_map/dmd.py --driver 1 --type masks --multiply 255 --resize 64
     parser = argparse.ArgumentParser(
         description='Process images into a memory-mapped file.',
         usage='python3 run_memory_map_conversion.py --path <path> [--output <output>] [--resize <resize>] [--extension <extension>]',
     )
-    parser.add_argument('--session', required=True, help='Name of the session.')
+    parser.add_argument('--session', help='Name of the session.')
     parser.add_argument(
         '--type',
-        choices=['rgb', 'depth', 'source_depth', 'video_depth_anything'],
+        choices=['rgb', 'depth', 'source_depth', 'video_depth_anything', 'masks'],
         required=True,
         help='Type of images to process.',
     )
     parser.add_argument('--output', help='Path to save the output memory-mapped file.')
     parser.add_argument(
-        '--resize', type=int, default=256, help='Size to resize images (default: 256).'
-    )
-    parser.add_argument(
-        '--extension',
-        type=str,
-        choices=['png', 'jpg'],
-        default='png',
-        help='File extension to filter images (default: png).',
+        '--resize', type=int, default=256, help='Size to resize images.'
     )
     parser.add_argument(
         '--stage',
         choices=['train', 'test', 'all'],
         default='all',
-        help='Stage of the dataset (default: all).',
+        help='Stage of the dataset.',
     )
-    # parser.add_argument(
-    #     '--mask',
-    #     action='store_true',
-    #     help='Mask everything except the driver (default: False).',
-    # )
+    parser.add_argument(
+        '--mask',
+        action='store_true',
+        help='Mask everything except the driver.',
+    )
+    parser.add_argument(
+        '--add-depth-channel',
+        action='store_true',
+        help='Add depth channel.',
+    )
+    parser.add_argument(
+        '--multiply',
+        type=float,
+        help='Multiply the image by a value.',
+    )
+    parser.add_argument(
+        '--overwrite',
+        action='store_true',
+        help='Overwrite the existing memory-mapped file.',
+    )
+    parser.add_argument(
+        '--driver',
+        choices=[1, 2, 3, 4, 5],
+        type=int,
+        help='Choose driver ID to extract all corresponding sessions.',
+    )
 
     args = parser.parse_args()
     print(args)

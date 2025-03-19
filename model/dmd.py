@@ -47,7 +47,7 @@ OTHER_ACTIONS: Final[list[str]] = DROWSINESS + [
     'hands_using_wheel/both',
     'hands_on_wheel/both_hands',
     'talking/talking',
-    'driver_actions/standstill_or_waiting',
+    'driver_actions/standstill_or_waiting',  # This may be classified as a distraction
     'driver_actions/talking_to_passenger',
     'driver_actions/safe_drive',
     'driver_actions/change_gear',  # This is hard to distinguish - one hand
@@ -58,6 +58,33 @@ OTHER_ACTIONS: Final[list[str]] = DROWSINESS + [
     'transition/giving control',
 ]
 SOURCE_TYPES: Final[list[str]] = ['rgb', 'depth']
+DRIVER_SESSION_MAPPING: Final[dict[int, list[str]]] = {
+    1: [
+        'gA_1_s1_2019-03-08T09;31;15+01;00',
+        'gA_1_s2_2019-03-08T09;21;03+01;00',
+        'gA_1_s3_2019-03-14T14;31;08+01;00',
+        'gA_1_s4_2019-03-22T11;49;58+01;00',
+        'gA_1_s5_2019-03-14T14;26;17+01;00',
+        'gA_1_s6_2019-03-08T09;15;15+01;00',
+        'gA_1_s6_2019-03-22T11;59;56+01;00',
+    ],
+    2: [
+        'gA_2_s1_2019-03-08T10;01;44+01;00',
+        'gA_2_s2_2019-03-08T09;50;49+01;00',
+    ],
+    3: [
+        'gA_3_s1_2019-03-08T10;27;38+01;00',
+        'gA_3_s2_2019-03-08T10;16;48+01;00',
+    ],
+    4: [
+        'gA_4_s1_2019-03-13T10;36;15+01;00',
+        'gA_4_s2_2019-03-13T10;43;06+01;00',
+    ],
+    5: [
+        'gA_5_s1_2019-03-08T10;57;00+01;00',
+        'gA_5_s2_2019-03-08T10;46;46+01;00',
+    ],
+}
 
 
 @cache

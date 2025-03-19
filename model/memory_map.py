@@ -6,7 +6,11 @@ import numpy as np
 from PIL import Image
 from tqdm import tqdm
 
-from .common import crop_driver_image_contains, preprocess_515, preprocess_515_cv
+from .common import (
+    crop_driver_image_contains,
+    preprocess_515,
+    preprocess_515_cv,
+)
 
 
 def resize_driver(image_path: Path, resize: tuple[int, int]) -> np.ndarray:
