@@ -7,6 +7,7 @@ from typing import Literal, TypedDict
 import cv2 as cv
 import numpy as np
 from PIL import Image, ImageOps
+from tqdm import tqdm
 
 logger = logging.getLogger(__name__)
 
@@ -26,6 +27,82 @@ class BatchSizeDict(TypedDict):
     train: int
     valid: int
     test: int
+
+
+def get_video_frame_count(video_path: str | Path) -> int:
+    """Get the frame count of a video using OpenCV."""
+    video = cv.VideoCapture(video_path)
+
+    if not video.isOpened():
+        logger.error(f'Error opening video: {video_path}')
+        return -1
+
+    frame_count = int(video.get(cv.CAP_PROP_FRAME_COUNT))
+    video.release()
+    return frame_count
+
+
+def create_video_from_images(
+    frame_paths: list[Path],
+    output_path: str | Path = 'output.mp4',
+    fps: int = 30,
+    size: None | tuple[int, int] = None,
+) -> bool:
+    """
+    Create an MP4 video from a list of image paths.
+
+    Parameters
+    ----------
+    frame_paths: list[Path]
+        List of paths to image files.
+    output_path: str | Path
+        Path where the output video will be saved.
+    fps: int
+        Frames per second for the output video.
+    size: None | tuple[int, int]
+        Size (width, height) for the output video. If None, size of first image will be used.
+
+    Returns
+    -------
+    bool
+        True if video was created successfully, False otherwise.
+    """
+    if not frame_paths:
+        print('Error: No image paths provided')
+        return False
+
+    # Read the first image to get dimensions if size is not provided
+    first_image = cv.imread(frame_paths[0])
+    if first_image is None:
+        print(f'Error: Could not read image at {frame_paths[0]}')
+        return False
+
+    if size is None:
+        height, width = first_image.shape[:2]
+        size = (width, height)
+
+    # Define the codec and create VideoWriter object
+    fourcc = cv.VideoWriter_fourcc(*'mp4v')  # MP4 codec
+    out = cv.VideoWriter(output_path, fourcc, fps, size)
+
+    # Process each image and write to video
+    for i, img_path in tqdm(enumerate(frame_paths), desc='Creating video'):
+        img = cv.imread(img_path)
+        if img is None:
+            print(f'Warning: Could not read image at {img_path}, skipping')
+            continue
+
+        # Resize image if necessary
+        if img.shape[:2] != (size[1], size[0]):
+            img = cv.resize(img, size)
+
+        # Write the frame to video
+        out.write(img)
+
+    # Release the VideoWriter
+    out.release()
+    print(f'Video created successfully at {output_path}')
+    return True
 
 
 def crop_driver_image(image: Image.Image, image_path: Path) -> Image.Image:
@@ -133,6 +210,7 @@ class Anomalies:
     @staticmethod
     def from_json(
         path: str | Path | Sequence[str | Path],
+        video_lengths: Sequence[int],
     ) -> 'Anomalies':
         """Create an Anomalies instance from a JSON annotation file(s) in VCD format.
 
@@ -145,12 +223,12 @@ class Anomalies:
         from model.dmd import DISTRACTIONS
 
         anomalies = []
-        video_length = 0
+        video_length_total = 0
         paths = [path] if isinstance(path, str | Path) else sorted(path)
 
         logger.info(f'Loading annotations from {len(paths)} files.')
 
-        for path in paths:
+        for path, video_length in zip(paths, video_lengths, strict=True):
             with open(path) as f:
                 annotations = json.load(f)
 
@@ -161,15 +239,17 @@ class Anomalies:
                     for frame_interval in value['frame_intervals']:
                         anomalies.append(
                             Anomaly(
-                                start=video_length + frame_interval['frame_start'],
-                                end=video_length + frame_interval['frame_end'],
+                                start=video_length_total
+                                + frame_interval['frame_start'],
+                                end=video_length_total + frame_interval['frame_end'],
                                 labels=[label],
                             )
                         )
+            # We do not use the video length from the JSON file, because it is often incorrect
+            # and the actual video has less frames than what is stated in the JSON file.
+            video_length_total += video_length
 
-            video_length += annotations['openlabel']['frame_intervals'][0]['frame_end']
-
-        return Anomalies(anomalies=anomalies, video_length=video_length)
+        return Anomalies(anomalies=anomalies, video_length=video_length_total)
 
     @staticmethod
     def from_file(path: str | Path) -> 'Anomalies':
