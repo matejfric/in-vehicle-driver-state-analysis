@@ -1,6 +1,12 @@
+from collections import defaultdict
 from typing import Any
 
 import torch
+import torch.nn as nn
+import torch.nn.functional as F
+import torch.optim
+from torch.utils.data import DataLoader
+from tqdm import tqdm
 
 
 # Newtype Design Pattern
@@ -13,6 +19,92 @@ class Encoder(torch.nn.Module):
 class Decoder(torch.nn.Module):
     def __init__(self, *args: Any, **kwargs: Any) -> None:
         super().__init__(*args, **kwargs)
+
+
+def evaluate_model_parallel(
+    model: nn.Module,
+    test_dataloader: DataLoader,
+    batch_size: int = 16,
+    num_workers: int = 4,
+) -> dict[str, list[float]]:
+    """Evaluate a model in parallel."""
+    if torch.cuda.is_available():
+        # Get the number of available GPUs
+        n_gpu = torch.cuda.device_count()
+        # Use DataParallel if multiple GPUs are available
+        if n_gpu > 1:
+            model = nn.DataParallel(model)
+        device = torch.device('cuda')
+    else:
+        device = torch.device('cpu')
+        n_gpu = 0
+
+    # Print device information
+    print(f'Using {n_gpu} GPU(s)' if n_gpu > 0 else 'Using CPU')
+
+    # Set model to evaluation mode and move to device
+    model.eval()
+    model.to(device)
+
+    # Initialize error container
+    errors = defaultdict(list)
+
+    # Use a proper DataLoader with batching
+    loader = DataLoader(
+        test_dataloader.dataset,
+        batch_size=batch_size,
+        shuffle=False,
+        num_workers=num_workers,
+        pin_memory=True,
+    )
+
+    # Process batches
+    with torch.no_grad():
+        for batch in tqdm(loader):
+            input_seq = batch['image']
+            input_seq = input_seq.to(device)
+
+            # Forward pass
+            output = model(input_seq)
+
+            # Move results to CPU for error calculation
+            output = output.cpu()
+            input_seq = input_seq.cpu()
+
+            # Calculate errors for each sample in the batch
+            for i in range(input_seq.size(0)):
+                sample_output = output[i]
+                sample_input = input_seq[i]
+
+                # MSE error
+                mse = (
+                    F.mse_loss(sample_output, sample_input, reduction='none')
+                    .mean(dim=1)
+                    .squeeze()
+                    .mean()
+                    .item()
+                )
+                # MAE error
+                mae = (
+                    F.l1_loss(sample_output, sample_input, reduction='none')
+                    .mean(dim=1)
+                    .squeeze()
+                    .mean()
+                    .item()
+                )
+                # Frobenius norm
+                fro = (
+                    torch.norm((sample_output - sample_input).squeeze(), p='fro', dim=0)
+                    .mean()
+                    .item()
+                )
+
+                # Store errors
+                errors['mse'].append(mse)
+                errors['mae'].append(mae)
+                errors['fro'].append(fro)
+
+    return errors
 
 
 class TimeDistributed(torch.nn.Module):
