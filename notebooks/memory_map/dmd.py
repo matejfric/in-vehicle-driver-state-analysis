@@ -15,6 +15,7 @@ def _prepare_train(
     resize: int,
     source: str,
     func: Callable[[Path, tuple[int, int]], np.ndarray],
+    channels: int | None = None,
     overwrite: bool = False,
 ) -> None:
     sequencies: list[list[Path]] = [
@@ -35,7 +36,11 @@ def _prepare_train(
 
         # Write the memory-mapped file
         mm_writer = MemMapWriter(
-            image_paths, output_file, func=func, resize=(resize, resize)
+            image_paths,
+            output_file,
+            func=func,
+            resize=(resize, resize),
+            channels=channels,
         )
         mm_writer.write(overwrite=overwrite)
         print(mm_writer)
@@ -46,6 +51,7 @@ def _prepare_test(
     resize: int,
     source: str,
     func: Callable[[Path, tuple[int, int]], np.ndarray],
+    channels: int | None = None,
     overwrite: bool = False,
 ) -> None:
     src_extension: Literal['jpg', 'png'] = 'jpg' if source == 'rgb' else 'png'
@@ -69,7 +75,7 @@ def _prepare_test(
 
     # Write the memory-mapped file
     mm_writer = MemMapWriter(
-        image_paths, output_file, func=func, resize=(resize, resize)
+        image_paths, output_file, func=func, resize=(resize, resize), channels=channels
     )
     mm_writer.write(overwrite=overwrite)
     print(mm_writer)
@@ -89,6 +95,12 @@ def main(args: argparse.Namespace) -> None:
     source = args.type
     stage = args.stage
     overwrite = args.overwrite
+    if source == 'rgb':
+        channels = 3
+    elif source == 'rgbd':
+        channels = 4
+    else:
+        channels = None
 
     prep_func_builder = PreprocessingFunctionBuilder().from_pillow().pad_square()
     if args.add_depth_channel:
@@ -102,11 +114,11 @@ def main(args: argparse.Namespace) -> None:
 
     def prep_train() -> None:
         for session_path in session_paths:
-            _prepare_train(session_path, resize, source, func, overwrite)
+            _prepare_train(session_path, resize, source, func, channels, overwrite)
 
     def prep_test() -> None:
         for session_path in session_paths:
-            _prepare_test(session_path, resize, source, func, overwrite)
+            _prepare_test(session_path, resize, source, func, channels, overwrite)
 
     if stage == 'train':
         prep_train()
@@ -123,6 +135,8 @@ if __name__ == '__main__':
     # $ conda activate torch
     # 2. For binary masks:
     # $ python3 notebooks/memory_map/dmd.py --driver 1 --type masks --multiply 255 --resize 64
+    # 3. For RGB images:
+    # $ python3 notebooks/memory_map/dmd.py --driver 1 --type rgb --resize 64 --mask
     parser = argparse.ArgumentParser(
         description='Process images into a memory-mapped file.',
         usage='python3 run_memory_map_conversion.py --path <path> [--output <output>] [--resize <resize>] [--extension <extension>]',
@@ -130,7 +144,14 @@ if __name__ == '__main__':
     parser.add_argument('--session', help='Name of the session.')
     parser.add_argument(
         '--type',
-        choices=['rgb', 'depth', 'source_depth', 'video_depth_anything', 'masks'],
+        choices=[
+            'rgb',
+            'rgbd',
+            'depth',
+            'source_depth',
+            'video_depth_anything',
+            'masks',
+        ],
         required=True,
         help='Type of images to process.',
     )

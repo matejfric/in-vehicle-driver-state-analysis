@@ -8,7 +8,7 @@ import papermill as pm
 # %%
 job_dir_root = Path(f'jobs/{datetime.now().strftime("%Y-%m-%d-%H%M")}')
 drivers = [1]  # ['geordi', 'poli', 'michal', 'dans', 'jakub']
-source_types = ['masks']  # ['rgbd', 'rgbdm']
+source_types = ['rgb']  # ['rgbd', 'rgbdm']
 image_sizes = [64]
 latent_dims = [128]
 dataset = 'dmd'

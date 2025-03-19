@@ -259,13 +259,13 @@ class TemporalAutoencoderDatasetDMD(Dataset):
     def __init__(
         self,
         dataset_directories: Path | str | Sequence[str | Path],
-        memory_map_image_shape: tuple[int, int] = (256, 256),
+        memory_map_image_shape: tuple[int, int] | tuple[int, int, int] = (256, 256),
         window_size: int = 4,
         time_step: int = 1,
         time_dim_index: Literal[0, 1] = 0,
         transforms: albu.Compose | None = None,
         input_transforms: albu.Compose | None = None,
-        source_type: Literal['depth', 'rgb', 'source_depth'] = 'depth',
+        source_type: Literal['depth', 'rgb', 'masks', 'rgbd', 'source_depth'] = 'depth',
     ) -> None:
         """Dataset for temporal autoencoder supporting multiple video files.
 
@@ -293,6 +293,10 @@ class TemporalAutoencoderDatasetDMD(Dataset):
         input_transforms : albu.Compose, default=None
             Compose object with albumentations transforms to apply to the input image only.
         """
+        # Remove the channel dimension if it is 1
+        if len(memory_map_image_shape) == 3 and memory_map_image_shape[2] == 1:
+            memory_map_image_shape = memory_map_image_shape[:2]
+
         self.dataset_directories = (
             [Path(directory) for directory in dataset_directories]
             if isinstance(dataset_directories, Sequence)
