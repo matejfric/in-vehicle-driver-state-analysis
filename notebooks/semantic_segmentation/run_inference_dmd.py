@@ -6,13 +6,12 @@ from pprint import pprint
 import papermill as pm
 import tqdm
 
+from model.dmd import CATEGORIES, ROOT
+
 # %%
-root_dir = Path().home() / 'source/driver-dataset/dmd/'
-session_dirs: list[Path] = list(root_dir.glob('*'))
+session_dirs: list[Path] = [x for x in ROOT.glob('*') if x.is_dir()]
 session_subdirs: list[Path] = [
-    ses_dir / class_dir
-    for ses_dir in session_dirs
-    for class_dir in ['normal', 'anomal']
+    ses_dir / class_dir for ses_dir in session_dirs for class_dir in CATEGORIES
 ]
 all_subdirs: list[list[Path]] = [
     list(subdir.glob('*')) for subdir in session_subdirs if subdir.is_dir()

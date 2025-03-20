@@ -4,35 +4,50 @@ from pathlib import Path
 from pprint import pprint
 
 import papermill as pm
+from tqdm import tqdm
 
 from model.dmd import CATEGORIES, ROOT
 
 # %%
-session = 'gA_1_s1_2019-03-08T09;31;15+01;00_rgb_body'
-sequencies: list[list[Path]] = [
-    list((ROOT / session / cat_dir).glob('*')) for cat_dir in CATEGORIES
+session_dirs: list[Path] = [
+    x
+    for x in ROOT.glob('*')
+    if x.is_dir()
+    and x.name != 'gA_1_s1_2019-03-08T09;31;15+01;00'
+    and x.name.startswith('gA_1')
 ]
-all_dirs: list[Path] = [subdir for sublist in sequencies for subdir in sublist]
-job_root = Path(f'jobs/depth_dmd/{session}')
+pprint(session_dirs)
 
-pprint(all_dirs)
+session_subdirs: list[Path] = [
+    ses_dir / class_dir for ses_dir in session_dirs for class_dir in CATEGORIES
+]
+all_subdirs: list[list[Path]] = [
+    list(subdir.glob('*')) for subdir in session_subdirs if subdir.is_dir()
+]
+all_dirs = sorted(
+    [
+        dir
+        for subdirs in all_subdirs
+        for dir in subdirs
+        if (dir / 'rgb').is_dir() and len(list((dir / 'rgb').glob('*.jpg'))) > 0
+    ]
+)
+job_root = Path(f'jobs/dmd/{datetime.now().strftime("%Y-%m-%d")}')
+
+pprint(all_dirs[:3])
 
 # %%
 
-for dir in all_dirs:
-    path_parts = str(dir).split('/')
-    output_subdir = path_parts[-2]
-    output_name = path_parts[-1]
+for dir in (pbar := tqdm(all_dirs)):
+    sequence = dir.name
+    class_name = dir.parent.name
+    session = dir.parent.parent.name
+    job_dir = job_root / session / class_name / sequence
+    pbar.set_postfix_str(f'{session}/{class_name}/{sequence}')
 
-    print(
-        f'{datetime.now().strftime("%Y-%m-%d %H:%M:%S")} processing: {output_subdir}/{output_name}'
-    )
-
-    (job_root / output_subdir).mkdir(parents=True, exist_ok=True)
-
-    job_dir = job_root / output_subdir / output_name
+    job_dir.parent.mkdir(parents=True, exist_ok=True)
     pm.execute_notebook(
-        'job_depth.ipynb',
+        'job_mde.ipynb',
         f'{str(job_dir)}.ipynb',
         parameters=dict(
             input_dir=str(dir / 'rgb'),
