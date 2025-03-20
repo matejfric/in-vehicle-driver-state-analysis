@@ -19,6 +19,15 @@ DRIVER_MAPPING: dict[str, int] = {
     '2021_11_18_dans_enyaq': 6,
     '2024_07_02_radovan_enyaq': -1,  # Not in the original papers
 }
+DRIVER_NAMES_MAPPING: dict[str, int] = {
+    'geordi': 1,
+    'jakubh': 2,
+    'michal': 4,
+    'poli': 5,
+    'dans': 6,
+    'radovan': -1,  # Not in the original papers
+}
+
 
 type ModelStages = Literal['train', 'valid', 'test']
 
