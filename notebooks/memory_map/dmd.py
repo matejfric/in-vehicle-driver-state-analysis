@@ -21,11 +21,12 @@ def _prepare_train(
     sequencies: list[list[Path]] = [
         list((session_path / cat_dir).glob('*')) for cat_dir in CATEGORIES
     ]
+    source_dir = 'rgb' if source == 'rgbd' else source
     all_dirs: list[Path] = [
-        subdir / source for sublist in sequencies for subdir in sublist
+        subdir / source_dir for sublist in sequencies for subdir in sublist
     ]
     all_dirs = [dir for dir in all_dirs if dir.is_dir()]
-    src_extension: Literal['jpg', 'png'] = 'jpg' if source == 'rgb' else 'png'
+    src_extension: Literal['jpg', 'png'] = 'jpg' if source in ['rgb', 'rgbd'] else 'png'
     for dir in all_dirs:
         # Gather all image paths in the specified directory
         image_paths = sorted(dir.glob(f'*.{src_extension}'), key=lambda x: x.stem)
@@ -54,12 +55,13 @@ def _prepare_test(
     channels: int | None = None,
     overwrite: bool = False,
 ) -> None:
-    src_extension: Literal['jpg', 'png'] = 'jpg' if source == 'rgb' else 'png'
+    src_extension: Literal['jpg', 'png'] = 'jpg' if source in ['rgb', 'rgbd'] else 'png'
     sequencies: list[list[Path]] = [
         list((session_path / cat_dir).glob('*')) for cat_dir in CATEGORIES
     ]
+    source_dir = 'rgb' if source == 'rgbd' else source
     all_dirs: list[Path] = [
-        subdir / source for sublist in sequencies for subdir in sublist
+        subdir / source_dir for sublist in sequencies for subdir in sublist
     ]
     all_dirs = [dir for dir in all_dirs if dir.is_dir()]
     print(f'Found {len(all_dirs)} directories.')
@@ -99,6 +101,7 @@ def main(args: argparse.Namespace) -> None:
         channels = 3
     elif source == 'rgbd':
         channels = 4
+        args.add_depth_channel = True
     else:
         channels = None
 
