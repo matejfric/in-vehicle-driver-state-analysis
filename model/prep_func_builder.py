@@ -11,6 +11,7 @@ from .common import (
     pad_to_square_cv,
     preprocess_515,
     preprocess_515_cv,
+    preprocess_depth_frame,
 )
 
 
@@ -115,23 +116,42 @@ class PreprocessingFunctionBuilder:
         return self
 
     def add_depth_channel(
-        self, depth_in_parent: bool = True
+        self,
+        depth_in_parent: bool = True,
+        depth_dir_name: str = 'depth',
+        depth_threshold: int = 2000,
     ) -> 'PreprocessingFunctionBuilder':
         """Add a depth channel to the image.
 
-        Args:
-            depth_in_parent: If True, depth is in parent/depth/, otherwise in same directory
+        Parameters
+        ----------
+        depth_in_parent: bool
+            If True, depth is in `.parent/depth/`, otherwise in same directory.
+        depth_dir_name: str
+            Name of the directory containing depth images.
+        depth_threshold: int
+            Threshold for depth values in milimeters. Anything above this value is set to 0.
         """
 
         def _add_depth(img: Image.Image | np.ndarray, path: Path) -> np.ndarray:
             if depth_in_parent:
                 depth_path = (
-                    path.parent.parent / 'depth' / path.with_suffix('.png').name
+                    path.parent.parent / depth_dir_name / path.with_suffix('.png').name
                 )
             else:
                 depth_path = path.with_suffix('.depth.png')
 
-            depth_pil = Image.open(depth_path).convert('L')
+            if depth_dir_name == 'depth':
+                # MDE (Depth Anything)
+                depth_pil = Image.open(depth_path).convert('L')
+            else:
+                # Depth sensor
+                depth_cv = cv.imread(str(depth_path), cv.IMREAD_UNCHANGED)
+                depth_pil = Image.fromarray(
+                    preprocess_depth_frame(
+                        frame=depth_cv, depth_threshold=depth_threshold
+                    )
+                )
 
             if isinstance(img, np.ndarray):
                 depth_pil = depth_pil.resize((img.shape[1], img.shape[0]))

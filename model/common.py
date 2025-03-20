@@ -323,7 +323,6 @@ def preprocess_depth_frame(
     depth_threshold: int = 2000,
 ) -> np.ndarray:
     """Preprocess depth frame."""
-    # frame_clipped = np.clip(frame, 0, depth_threshold)
     frame_clipped = np.where(frame > depth_threshold, 0, frame)
     # Map the range [0, depth_threshold] to [0, 255]
     img8 = ((frame_clipped / depth_threshold) * 255).astype(np.uint8)

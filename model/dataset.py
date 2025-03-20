@@ -265,7 +265,9 @@ class TemporalAutoencoderDatasetDMD(Dataset):
         time_dim_index: Literal[0, 1] = 0,
         transforms: albu.Compose | None = None,
         input_transforms: albu.Compose | None = None,
-        source_type: Literal['depth', 'rgb', 'masks', 'rgbd', 'source_depth'] = 'depth',
+        source_type: Literal[
+            'depth', 'rgb', 'masks', 'rgbd', 'source_depth', 'rgb_source_depth'
+        ] = 'depth',
     ) -> None:
         """Dataset for temporal autoencoder supporting multiple video files.
 
