@@ -261,28 +261,62 @@ class Anomalies:
         return Anomalies(anomalies=anomalies, video_length=video_length_total)
 
     @staticmethod
-    def from_file(path: str | Path) -> 'Anomalies':
-        """Read a text file and create an Anomalies instance."""
-        with open(path) as file:
-            data = file.readlines()
+    def from_file(
+        path: str | Path | Sequence[str | Path],
+    ) -> 'Anomalies':
+        """Read a text file(s) and create an Anomalies instance.
 
-        # Parse lines into a list of Anomaly dictionaries
+        Parameters
+        ----------
+        path : str | Path | Sequence[str | Path]
+            Path to a single file or a sequence of paths to multiple files.
+
+        Returns
+        -------
+        Anomalies
+            An instance of Anomalies class containing all anomalies from the file(s).
+        """
+        paths = [path] if isinstance(path, str | Path) else sorted(path)
+
+        logger.info(f'Loading annotations from {len(paths)} files.')
+
         parsed_data = []
-        for line in data:
-            if not line.strip():
-                continue
-            parts = line.split()
-            if len(parts) < 3:
-                raise ValueError(f'Invalid line: `{line}`. File: `{path}`')
-            if '#' in parts[0]:
-                continue
-            start = int(parts[0])
-            end = int(parts[1])
-            labels = ' '.join(parts[2:]).split(',')
-            labels = [label.strip() for label in labels]
-            parsed_data.append(Anomaly(start=start, end=end, labels=labels))
+        video_length_total = 0
 
-        return Anomalies(parsed_data)
+        for i, file_path in enumerate(paths):
+            video_path = Path(file_path).parent.glob('*.mp4').__next__()
+            if video_path is None or not video_path.exists():
+                raise ValueError(f'Video file for annotation `{file_path}` not found.')
+            video_length = get_video_frame_count(video_path)
+
+            with open(file_path) as file:
+                data = file.readlines()
+
+            # Parse lines into Anomaly objects
+            for line in data:
+                if not line.strip():
+                    continue
+                parts = line.split()
+                if len(parts) < 3:
+                    raise ValueError(f'Invalid line: `{line}`. File: `{file_path}`')
+                if '#' in parts[0]:
+                    continue
+
+                start = int(parts[0])
+                end = int(parts[1])
+
+                # Apply offset
+                start += video_length_total
+                end += video_length_total
+
+                labels = ' '.join(parts[2:]).split(',')
+                labels = [label.strip() for label in labels]
+                parsed_data.append(Anomaly(start=start, end=end, labels=labels))
+
+            # Update total video length
+            video_length_total += video_length
+
+        return Anomalies(anomalies=parsed_data, video_length=video_length_total)
 
     def to_ground_truth(self, length: int = -1) -> list[int]:
         """Convert the anomalies to a ground truth list for binary classification.

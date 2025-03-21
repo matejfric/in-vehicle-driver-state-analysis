@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import logging
 from collections import OrderedDict
 from collections.abc import Sequence
@@ -157,7 +159,7 @@ def get_last_window_index(
 class TemporalAutoencoderDataset(Dataset):
     def __init__(
         self,
-        memory_map_file: Path | str,
+        memory_map_file: Path | str | Sequence[str | Path],
         memory_map_image_shape: tuple[int, int] | tuple[int, int, int] = (256, 256),
         window_size: int = 4,
         time_step: int = 1,
@@ -166,12 +168,12 @@ class TemporalAutoencoderDataset(Dataset):
         input_transforms: albu.Compose | None = None,
         dtype: type = np.uint8,
     ) -> None:
-        """Dataset for temporal autoencoder.
+        """Dataset for temporal autoencoder supporting single or multiple memory map files.
 
         Parameters
         ----------
-        memory_map_file : Path | str
-            Path to `numpy.memmap` file (`.dat`).
+        memory_map_file : Path | str | Sequence[str | Path]
+            Path to a single `numpy.memmap` file (`.dat`) or a sequence of paths to multiple memory map files.
         memory_map_image_shape : tuple[int, int], default=(256, 256)
             Shape of the images in `memory_map_file`.
         window_size : int, default=4
@@ -185,6 +187,8 @@ class TemporalAutoencoderDataset(Dataset):
             Compose object with albumentations transforms.
         input_transforms : albu.Compose, default=None
             Compose object with albumentations transforms to apply to the input image only.
+        dtype : type, default=np.uint8
+            Data type of the memory map.
 
         Note
         ----
@@ -205,10 +209,13 @@ class TemporalAutoencoderDataset(Dataset):
         if len(memory_map_image_shape) == 3 and memory_map_image_shape[2] == 1:
             memory_map_image_shape = memory_map_image_shape[:2]
 
-        self.memory_map_file = memory_map_file
-        self.memory_map = MemMapReader(
-            memory_map_file, memory_map_image_shape, dtype=dtype
+        self.memory_map_files = (
+            [Path(mmap) for mmap in memory_map_file]
+            if isinstance(memory_map_file, Sequence)
+            and not isinstance(memory_map_file, str | Path)
+            else [Path(memory_map_file)]
         )
+
         self.window_size = window_size
         self.time_step = time_step
         self.time_dim_index = time_dim_index
@@ -216,20 +223,49 @@ class TemporalAutoencoderDataset(Dataset):
         self.transforms = transforms
         self.input_transforms = input_transforms
 
-        # Number of temporal slices in the dataset.
-        self.length_ = get_last_window_index(
-            len(self.memory_map), window_size, time_step
-        )
+        # Initialize list to store information about each memory map
+        self.memory_maps: list[VideoInfo] = []
+        current_idx = 0
+
+        for map_file in self.memory_map_files:
+            memory_map = MemMapReader(map_file, memory_map_image_shape, dtype=dtype)
+            map_length = get_last_window_index(len(memory_map), window_size, time_step)
+
+            self.memory_maps.append(
+                VideoInfo(
+                    memory_map=memory_map,
+                    start_idx=current_idx,
+                    length=map_length,
+                    path=map_file,
+                )
+            )
+            current_idx += map_length
+
+        self.length_ = current_idx
+
+        if self.length_ == 0:
+            raise ValueError('No valid memory map files found or all files are empty')
 
     def __len__(self) -> int:
         """Number of temporal slices in the dataset (samples)."""
         return self.length_
 
+    def _locate_memory_map(self, idx: int) -> tuple[VideoInfo, int]:
+        """Find which memory map contains the given index and convert to local index."""
+        for mem_map in self.memory_maps:
+            if idx < mem_map.start_idx + mem_map.length:
+                return mem_map, idx - mem_map.start_idx
+        raise IndexError(f'Index {idx} is out of bounds')
+
     def __getitem__(self, idx: int) -> DatasetItem:
+        # Find which memory map contains this index
+        memory_map_info, local_idx = self._locate_memory_map(idx)
+
         # Memory map is read-only by default, we need mutable copies of the numpy arrays.
-        temporal_slice = self.memory_map.window_mut(
-            idx, self.window_size, self.time_step
+        temporal_slice = memory_map_info.memory_map.window_mut(
+            local_idx, self.window_size, self.time_step
         )
+
         # list[(C, H, W)]
         temporal_slice = [self.default_transform_(image) for image in temporal_slice]
         # (T, C, H, W)
@@ -241,7 +277,7 @@ class TemporalAutoencoderDataset(Dataset):
         return DatasetItem(
             image=temporal_tensor,
             mask=temporal_tensor,
-            filename=idx,
+            filename=f'{memory_map_info.path}_{local_idx}',
         )
 
 
@@ -249,7 +285,7 @@ class TemporalAutoencoderDataset(Dataset):
 class VideoInfo:
     """Information about a video file. Helper class for `TemporalAutoencoderDatasetDMD`."""
 
-    memory_map: 'MemMapReader'
+    memory_map: MemMapReader
     start_idx: int  # Global start index for this video
     length: int  # Number of windows in this video
     path: Path  # Path to the video file
@@ -274,8 +310,8 @@ class TemporalAutoencoderDatasetDMD(Dataset):
         Each video maintains its independence (frames from different videos are never mixed),
         but the dataset presents a unified interface for accessing all videos sequentially.
 
-        Assumes naming convention: `{memory_map_image_shape[0]}.dat`.
-        Looks for files like `256.dat` recursively.
+        Assumes naming convention: `{source_type}_{memory_map_image_shape[0]}.dat`.
+        Looks for files like `rgb_128.dat` recursively.
 
         Parameters
         ----------
