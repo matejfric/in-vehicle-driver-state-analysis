@@ -615,9 +615,12 @@ def plot_error_and_anomalies(
     plt.xlabel('Frame')
 
     plt.legend(
-        fancybox=True,
+        fancybox=True,  # rounded corners
         facecolor='white',
-        borderpad=0.1,
+        framealpha=1,  # no transparency
+        frameon=1,
+        borderpad=0.5,
+        edgecolor='black',
     )
 
     if save_path:
@@ -709,7 +712,7 @@ def plot_pr_chart(
     plt.axis('square')
     plt.xlabel('Recall')
     plt.ylabel('Precision')
-    plt.legend(loc='lower left')
+    plt.legend()
     plt.tight_layout()
 
     if save_path:
