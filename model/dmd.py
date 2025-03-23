@@ -108,6 +108,16 @@ DRIVER_SESSION_MAPPING: Final[dict[int, list[str]]] = {
 }
 
 
+def get_all_sessions() -> list[str]:
+    return sorted(
+        [
+            session
+            for sessions in DRIVER_SESSION_MAPPING.values()
+            for session in sessions
+        ]
+    )
+
+
 @cache
 def _load_annotations(annotations_file_path: str | Path) -> dict:
     with open(annotations_file_path) as f:
