@@ -9,15 +9,15 @@ import papermill as pm
 job_dir_root = Path(f'jobs/{datetime.now().strftime("%Y-%m-%d-%H%M")}')
 
 # ['all', 'geordi', 'poli', 'michal', 'dans', 'jakub', 1, 2, 3, 4, 5]
-drivers = ['all']
+drivers = [1, 2, 3, 4, 5]
 
 # Some choices are only available for DMD and MRL respectively.
 # ['masks', 'images', 'depth', 'source_depth', 'rgb_source_depth', 'rgb', 'rgbd', 'rgbdm']
-source_types = ['depth']
+source_types = ['rgb']
 
 image_sizes = [64]
 latent_dims = [128]
-dataset = 'mrl'
+dataset = 'dmd'
 batch_size = 256
 
 pprint(
