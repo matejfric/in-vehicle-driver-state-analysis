@@ -1,9 +1,11 @@
 import random
+import warnings
 from collections.abc import Sequence
 from pathlib import Path
-from typing import Literal
+from typing import Any, Literal
 
 import albumentations as albu
+import matplotlib as mpl
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
@@ -604,7 +606,7 @@ def plot_error_and_anomalies(
             label='Anomaly' if start == start_indices[0] else '',
         )
 
-    plt.ylim(0.0, y_max)
+    plt.ylim(0.0 - 0.05, y_max + 0.05)
 
     if threshold:
         plt.axhline(
@@ -922,3 +924,179 @@ def plot_roc_charts(
     plt.show()
 
     return metrics
+
+
+def _plot_roc_curve(
+    y_true: np.ndarray | list[int],
+    y_pred_proba: np.ndarray | list[float],
+    ax: plt.Axes,
+    source_type: str,
+    cmap: str,
+    norm: plt.Normalize,
+    justification: int,
+    plot_thresholds: bool,
+    plot_kwargs: dict[str, Any],
+) -> mpl.collections.PathCollection | None:
+    # Calculate ROC curve
+    fpr, tpr, thresholds = roc_curve(y_true[: len(y_pred_proba)], y_pred_proba)
+    roc_auc = auc(fpr, tpr)
+
+    # Plot ROC curve
+    ax.plot(
+        fpr,
+        tpr,
+        label=f'{source_type.ljust(justification)} AUC={roc_auc:.3f}',
+        **plot_kwargs,
+    )
+
+    # Random predictions curve
+    ax.plot([0, 1], [0, 1], 'k--', alpha=0.5)
+
+    if plot_thresholds:
+        scatter = ax.scatter(fpr, tpr, c=thresholds, cmap=cmap, norm=norm)
+        return scatter
+
+
+def _plot_pr_curve(
+    y_true: np.ndarray | list[int],
+    y_pred_proba: np.ndarray | list[float],
+    ax: plt.Axes,
+    source_type: str,
+    cmap: str,
+    norm: plt.Normalize,
+    justification: int,
+    plot_thresholds: bool,
+    plot_kwargs: dict[str, Any],
+) -> mpl.collections.PathCollection | None:
+    precision, recall, thresholds = precision_recall_curve(
+        y_true[: len(y_pred_proba)], y_pred_proba
+    )
+    precision[precision > 1.0] = 1.0
+    recall[recall > 1.0] = 1.0
+    pr_auc = auc(recall, precision)
+
+    # Compute F1 scores for each threshold (skip the first element).
+    with warnings.catch_warnings():
+        # Suppress warnings for division by zero
+        warnings.simplefilter('ignore')
+        f1_scores = 2 * precision[1:] * recall[1:] / (precision[1:] + recall[1:])
+    optimal_idx = np.array(f1_scores).argmax()
+    optimal_threshold = thresholds[optimal_idx]  # noqa
+
+    # Plot PR curve
+    ax.step(
+        recall,
+        precision,
+        label=f'{source_type.ljust(justification)} AUC={pr_auc:.3f}',
+        **plot_kwargs,
+    )
+
+    if plot_thresholds:
+        scatter = plt.scatter(
+            recall[1:], precision[1:], c=thresholds, cmap=cmap, norm=norm
+        )
+        return scatter
+
+
+def plot_results(
+    which: Literal['roc', 'pr'],
+    data: dict[str, dict[str, dict[str, list[float | int] | float]]],
+    cmap: str = 'rainbow',
+    figsize: tuple[int, int] | None = None,
+    plot_thresholds: bool = False,
+    cbar_text: str = 'Threshold',
+    save_path: str | Path | None = None,
+    justification: int = 5,
+    linewidth: int = 3,
+    fig_height: int = 9,
+    fig_width_multiplier: int = 7,
+    source_type_color_map: dict[str, str] | None = None,
+    source_type_linestyle_map: dict[str, str] | None = None,
+    driver_name_mapping: dict[str | int, int] | None = None,
+) -> None:
+    n_plots = len(data)
+
+    # Calculate default figsize if not provided
+    if figsize is None:
+        figsize = (fig_width_multiplier * n_plots, fig_height)
+
+    # Create figure with gridspec to accommodate colorbar
+    fig = plt.figure(figsize=figsize)
+    gs = plt.GridSpec(1, n_plots + 1, width_ratios=[1] * n_plots + [0.05])  # type: ignore
+    axes = [fig.add_subplot(gs[0, i]) for i in range(n_plots)]
+
+    # Use fixed colormap range from 0 to 1
+    norm = plt.Normalize(vmin=0, vmax=1)  # type: ignore
+
+    for idx, (ax, (driver_name, driver_results)) in enumerate(zip(axes, data.items())):
+        for source_type, results in driver_results.items():
+            y_true: list[int] = results['y_true']  # type: ignore
+            y_pred_proba: list[float] = results['y_proba']  # type: ignore
+
+            plot_kwargs = {}
+            plot_kwargs['linewidth'] = linewidth
+            if source_type_color_map:
+                plot_kwargs['c'] = source_type_color_map[source_type]
+            if source_type_linestyle_map:
+                plot_kwargs['linestyle'] = source_type_linestyle_map[source_type]
+
+            if which == 'roc':
+                scatter = _plot_roc_curve(
+                    y_true,
+                    y_pred_proba,
+                    ax,
+                    source_type,
+                    cmap,
+                    norm,
+                    justification,
+                    plot_thresholds,
+                    plot_kwargs,
+                )
+            elif which == 'pr':
+                scatter = _plot_pr_curve(
+                    y_true,
+                    y_pred_proba,
+                    ax,
+                    source_type,
+                    cmap,
+                    norm,
+                    justification,
+                    plot_thresholds,
+                    plot_kwargs,
+                )
+
+        # Set title and limits
+        title = f'Driver {driver_name_mapping[driver_name] if driver_name_mapping else driver_name}'
+        ax.set_title(title)
+        ax.set_xlim([0, 1])  # type: ignore
+        ax.set_ylim([0, 1])  # type: ignore
+        ax.axis('square')
+        ax.set_xticks([0.0, 0.2, 0.4, 0.6, 0.8, 1.0])
+        ax.set_yticks([0.0, 0.2, 0.4, 0.6, 0.8, 1.0])
+
+        # Handle axis labels and ticks
+        if idx == 0:
+            ax.set_ylabel('True positive rate')
+        else:
+            # Remove y-axis labels for all but the first plot
+            ax.set_yticklabels([])
+
+        # Add x-label to all plots
+        ax.set_xlabel('False positive rate')
+        ax.legend(
+            loc='upper center',
+            bbox_to_anchor=(0.5, -0.15),
+        )
+
+    # Add colorbar in the last column of gridspec
+    if plot_thresholds:
+        cbar_ax = fig.add_subplot(gs[0, -1])
+        cbar = fig.colorbar(scatter, cax=cbar_ax)
+        cbar.set_label(cbar_text)
+
+    plt.tight_layout()
+    plt.subplots_adjust(bottom=0.3)  # Pad bottom for the legend
+
+    if save_path:
+        plt.savefig(save_path, bbox_inches='tight')
+    plt.show()
