@@ -39,6 +39,7 @@ DROWSINESS: Final[list[str]] = [
     'eyes_state/close',
     'eyes_state/open',
     'eyes_state/closing',
+    'eyes_state/undefined',
     'yawning/Yawning without hand',
 ]
 OTHER_ACTIONS: Final[list[str]] = DROWSINESS + [
