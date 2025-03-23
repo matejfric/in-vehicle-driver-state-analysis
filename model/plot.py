@@ -1012,9 +1012,10 @@ def plot_results(
     fig_width_multiplier: int = 7,
     n_rows: int = 1,
     n_cols: int | None = None,
+    legend_outside: bool = False,
     source_type_color_map: dict[str, str] | None = None,
     source_type_linestyle_map: dict[str, str] | None = None,
-    driver_name_mapping: dict[str | int, int] | None = None,
+    driver_name_mapping: dict[str, Any] | None = None,
 ) -> None:
     n_plots = len(data)
 
@@ -1114,7 +1115,7 @@ def plot_results(
         else:
             ax.set_xticklabels([])
 
-        if n_rows > 1:
+        if not legend_outside:
             ax.legend(
                 loc='lower right' if which == 'roc' else 'best',
             )
@@ -1133,6 +1134,7 @@ def plot_results(
     plt.tight_layout()
     if n_rows > 1:
         plt.subplots_adjust(bottom=0.3)  # Pad bottom for the legend
+        plt.subplots_adjust(hspace=0.1)  # Pad vertically between subplots
 
     if save_path:
         plt.savefig(save_path, bbox_inches='tight')
