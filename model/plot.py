@@ -929,14 +929,14 @@ def plot_roc_charts(
 def _plot_roc_curve(
     y_true: np.ndarray | list[int],
     y_pred_proba: np.ndarray | list[float],
-    ax: plt.Axes,
+    ax: plt.Axes,  # type: ignore
     source_type: str,
     cmap: str,
-    norm: plt.Normalize,
+    norm: plt.Normalize,  # type: ignore
     justification: int,
     plot_thresholds: bool,
     plot_kwargs: dict[str, Any],
-) -> mpl.collections.PathCollection | None:
+) -> mpl.collections.PathCollection | None:  # type: ignore
     # Calculate ROC curve
     fpr, tpr, thresholds = roc_curve(y_true[: len(y_pred_proba)], y_pred_proba)
     roc_auc = auc(fpr, tpr)
@@ -960,14 +960,14 @@ def _plot_roc_curve(
 def _plot_pr_curve(
     y_true: np.ndarray | list[int],
     y_pred_proba: np.ndarray | list[float],
-    ax: plt.Axes,
+    ax: plt.Axes,  # type: ignore
     source_type: str,
     cmap: str,
-    norm: plt.Normalize,
+    norm: plt.Normalize,  # type: ignore
     justification: int,
     plot_thresholds: bool,
     plot_kwargs: dict[str, Any],
-) -> mpl.collections.PathCollection | None:
+) -> mpl.collections.PathCollection | None:  # type: ignore
     precision, recall, thresholds = precision_recall_curve(
         y_true[: len(y_pred_proba)], y_pred_proba
     )
@@ -1045,6 +1045,13 @@ def plot_results(
         axes.append(fig.add_subplot(gs[row, col]))
 
     for idx, (ax, (driver_name, driver_results)) in enumerate(zip(axes, data.items())):
+        margin = 0.05
+        ax.set_xlim([0 - margin, 1 + margin])  # type: ignore
+        ax.set_ylim([0 - margin, 1 + margin])  # type: ignore
+        ax.axis('square')
+        ax.set_xticks([0.0, 0.2, 0.4, 0.6, 0.8, 1.0])
+        ax.set_yticks([0.0, 0.2, 0.4, 0.6, 0.8, 1.0])
+
         for source_type, results in driver_results.items():
             y_true: list[int] = results['y_true']  # type: ignore
             y_pred_proba: list[float] = results['y_proba']  # type: ignore
@@ -1082,13 +1089,14 @@ def plot_results(
                 )
 
         # Set title and limits
-        title = f'Driver {driver_name_mapping[driver_name] if driver_name_mapping else driver_name}'
+        driver_name = (
+            driver_name_mapping[driver_name] if driver_name_mapping else driver_name
+        )
+        if driver_name == 'all':
+            title = 'All Drivers'
+        else:
+            title = f'Driver {driver_name}'
         ax.set_title(title)
-        ax.set_xlim([0, 1])  # type: ignore
-        ax.set_ylim([0, 1])  # type: ignore
-        ax.axis('square')
-        ax.set_xticks([0.0, 0.2, 0.4, 0.6, 0.8, 1.0])
-        ax.set_yticks([0.0, 0.2, 0.4, 0.6, 0.8, 1.0])
 
         # Handle axis labels and ticks
         row = idx // n_cols
