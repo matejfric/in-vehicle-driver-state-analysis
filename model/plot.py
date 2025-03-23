@@ -1008,25 +1008,41 @@ def plot_results(
     save_path: str | Path | None = None,
     justification: int = 5,
     linewidth: int = 3,
-    fig_height: int = 9,
+    fig_height_multiplier: int = 9,
     fig_width_multiplier: int = 7,
+    n_rows: int = 1,
+    n_cols: int | None = None,
     source_type_color_map: dict[str, str] | None = None,
     source_type_linestyle_map: dict[str, str] | None = None,
     driver_name_mapping: dict[str | int, int] | None = None,
 ) -> None:
     n_plots = len(data)
 
+    # Calculate number of columns if not provided
+    if n_cols is None:
+        n_cols = int(np.ceil(n_plots / n_rows))
+    else:
+        # Adjust n_rows if both n_rows and n_cols are provided but insufficient
+        n_rows = int(np.ceil(n_plots / n_cols))
+
     # Calculate default figsize if not provided
     if figsize is None:
-        figsize = (fig_width_multiplier * n_plots, fig_height)
+        figsize = (fig_width_multiplier * n_cols, fig_height_multiplier * n_rows)
 
     # Create figure with gridspec to accommodate colorbar
     fig = plt.figure(figsize=figsize)
-    gs = plt.GridSpec(1, n_plots + 1, width_ratios=[1] * n_plots + [0.05])  # type: ignore
-    axes = [fig.add_subplot(gs[0, i]) for i in range(n_plots)]
+    gs = plt.GridSpec(n_rows, n_cols + 1, width_ratios=[1] * n_cols + [0.05])  # type: ignore
 
     # Use fixed colormap range from 0 to 1
     norm = plt.Normalize(vmin=0, vmax=1)  # type: ignore
+    scatter = None
+
+    # Create axes for each plot
+    axes = []
+    for i in range(min(n_plots, n_rows * n_cols)):
+        row = i // n_cols
+        col = i % n_cols
+        axes.append(fig.add_subplot(gs[row, col]))
 
     for idx, (ax, (driver_name, driver_results)) in enumerate(zip(axes, data.items())):
         for source_type, results in driver_results.items():
@@ -1075,27 +1091,40 @@ def plot_results(
         ax.set_yticks([0.0, 0.2, 0.4, 0.6, 0.8, 1.0])
 
         # Handle axis labels and ticks
-        if idx == 0:
-            ax.set_ylabel('True positive rate')
+        row = idx // n_cols
+        col = idx % n_cols
+
+        # Only add y-labels to leftmost plots
+        if col == 0:
+            ax.set_ylabel('True positive rate' if which == 'roc' else 'Precision')
         else:
-            # Remove y-axis labels for all but the first plot
             ax.set_yticklabels([])
 
-        # Add x-label to all plots
-        ax.set_xlabel('False positive rate')
-        ax.legend(
-            loc='upper center',
-            bbox_to_anchor=(0.5, -0.15),
-        )
+        # Only add x-labels to bottom plots
+        if row == n_rows - 1 or idx == n_plots - 1:
+            ax.set_xlabel('False positive rate' if which == 'roc' else 'Recall')
+        else:
+            ax.set_xticklabels([])
+
+        if n_rows > 1:
+            ax.legend(
+                loc='lower right' if which == 'roc' else 'best',
+            )
+        else:
+            ax.legend(
+                loc='upper center',
+                bbox_to_anchor=(0.5, -0.15),
+            )
 
     # Add colorbar in the last column of gridspec
-    if plot_thresholds:
-        cbar_ax = fig.add_subplot(gs[0, -1])
+    if plot_thresholds and scatter is not None:
+        cbar_ax = fig.add_subplot(gs[:, -1])
         cbar = fig.colorbar(scatter, cax=cbar_ax)
         cbar.set_label(cbar_text)
 
     plt.tight_layout()
-    plt.subplots_adjust(bottom=0.3)  # Pad bottom for the legend
+    if n_rows > 1:
+        plt.subplots_adjust(bottom=0.3)  # Pad bottom for the legend
 
     if save_path:
         plt.savefig(save_path, bbox_inches='tight')
