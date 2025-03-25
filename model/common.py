@@ -262,7 +262,7 @@ class Anomalies:
 
     @staticmethod
     def from_file(
-        path: str | Path | Sequence[str | Path],
+        path: str | Path | Sequence[str | Path], load_video_lengths: bool = True
     ) -> 'Anomalies':
         """Read a text file(s) and create an Anomalies instance.
 
@@ -284,10 +284,15 @@ class Anomalies:
         video_length_total = 0
 
         for i, file_path in enumerate(paths):
-            video_path = Path(file_path).parent.glob('*.mp4').__next__()
-            if video_path is None or not video_path.exists():
-                raise ValueError(f'Video file for annotation `{file_path}` not found.')
-            video_length = get_video_frame_count(video_path)
+            if load_video_lengths:
+                video_path = Path(file_path).parent.glob('*.mp4').__next__()
+                if video_path is None or not video_path.exists():
+                    raise ValueError(
+                        f'Video file for annotation `{file_path}` not found.'
+                    )
+                video_length = get_video_frame_count(video_path)
+            else:
+                video_length = 0
 
             with open(file_path) as file:
                 data = file.readlines()

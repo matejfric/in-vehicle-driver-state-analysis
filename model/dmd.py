@@ -118,6 +118,20 @@ def get_all_sessions() -> list[str]:
     )
 
 
+def get_clips(session: Path, category: str) -> list[Path]:
+    return [x for x in (session / category).glob('*') if x.is_dir()]
+
+
+def get_frame_paths(
+    session: Path, category: str, source_type: str, extension: str
+) -> list[Path]:
+    sequences = get_clips(session, category)
+    return sorted(
+        [img for x in sequences for img in (x / source_type).glob(f'*.{extension}')],
+        key=lambda x: int(x.stem),
+    )
+
+
 @cache
 def _load_annotations(annotations_file_path: str | Path) -> dict:
     with open(annotations_file_path) as f:
