@@ -1,4 +1,4 @@
-# 0 360 no belt
+# 0 360 no belts
 52 141 only right
 287 350 only right
 350 390 hands off
