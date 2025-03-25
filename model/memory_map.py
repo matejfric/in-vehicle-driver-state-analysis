@@ -1,3 +1,4 @@
+import logging
 from collections.abc import Callable, Generator
 from pathlib import Path
 
@@ -11,6 +12,8 @@ from .common import (
     preprocess_515,
     preprocess_515_cv,
 )
+
+logger = logging.getLogger(__name__)
 
 
 def resize_driver(image_path: Path, resize: tuple[int, int]) -> np.ndarray:
@@ -220,7 +223,7 @@ class MemMapWriter:
                         image = self[idx]  # Get the processed image
                         results.append((idx, image))
                     except Exception as e:
-                        print(f'Error processing image at index {idx}: {e}')
+                        logger.error(f'Error processing image at index {idx}: {e}')
             return results
 
         # Create chunks of indices to process
