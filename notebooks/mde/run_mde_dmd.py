@@ -9,13 +9,7 @@ from tqdm import tqdm
 from model.dmd import CATEGORIES, ROOT
 
 # %%
-session_dirs: list[Path] = [
-    x
-    for x in ROOT.glob('*')
-    if x.is_dir()
-    and x.name != 'gA_1_s1_2019-03-08T09;31;15+01;00'
-    and x.name.startswith('gA_1')
-]
+session_dirs: list[Path] = [x for x in ROOT.glob('*') if x.is_dir()]
 pprint(session_dirs)
 
 session_subdirs: list[Path] = [

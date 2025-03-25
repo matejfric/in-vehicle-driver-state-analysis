@@ -8,19 +8,30 @@ import papermill as pm
 # %%
 job_dir_root = Path(f'jobs/{datetime.now().strftime("%Y-%m-%d-%H%M")}')
 drivers = ['geordi', 'poli', 'michal', 'dans', 'jakub']
-pprint(drivers)
+source_types = ['masks']
+pprint(
+    dict(
+        job_dir_root=job_dir_root,
+        drivers=drivers,
+        source_types=source_types,
+    )
+)
 
 # %%
 for driver in drivers:
-    print(f'{datetime.now().strftime("%Y-%m-%d %H:%M:%S")} processing: driver={driver}')
-    job_dir = job_dir_root / driver
-    job_dir.parent.mkdir(parents=True, exist_ok=True)
-    pm.execute_notebook(
-        'train.ipynb',
-        f'{str(job_dir)}.ipynb',
-        parameters=dict(
-            driver=driver,
-        ),
-    )
+    for source_type in source_types:
+        print(
+            f'{datetime.now().strftime("%Y-%m-%d %H:%M:%S")} processing: driver={driver}, source_type={source_type}'
+        )
+        job_dir = job_dir_root / driver
+        job_dir.parent.mkdir(parents=True, exist_ok=True)
+        pm.execute_notebook(
+            'train.ipynb',
+            f'{str(job_dir)}.ipynb',
+            parameters=dict(
+                driver=driver,
+                source_type=source_type,
+            ),
+        )
 
 # %%

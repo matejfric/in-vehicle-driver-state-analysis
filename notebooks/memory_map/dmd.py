@@ -5,6 +5,7 @@ from pprint import pprint
 from typing import Literal
 
 import numpy as np
+import tqdm
 
 from model.dmd import CATEGORIES, DRIVER_SESSION_MAPPING, ROOT
 from model.memory_map import MemMapWriter
@@ -45,7 +46,6 @@ def _prepare_train(
             channels=channels,
         )
         mm_writer.write(overwrite=overwrite)
-        print(mm_writer)
 
 
 def _prepare_test(
@@ -81,7 +81,6 @@ def _prepare_test(
         image_paths, output_file, func=func, resize=(resize, resize), channels=channels
     )
     mm_writer.write(overwrite=overwrite)
-    print(mm_writer)
 
 
 def main(args: argparse.Namespace) -> None:
@@ -125,9 +124,6 @@ def main(args: argparse.Namespace) -> None:
     if args.multiply:
         prep_func_builder = prep_func_builder.multiply(args.multiply)
 
-    pprint(args)
-    input('Press Enter to continue...')
-
     func = prep_func_builder.build()
 
     fn_kwargs = dict(
@@ -141,11 +137,15 @@ def main(args: argparse.Namespace) -> None:
     )
 
     def prep_train() -> None:
-        for session_path in session_paths:
+        for session_path in tqdm.tqdm(
+            session_paths, desc='Processing training sessions', leave=False
+        ):
             _prepare_train(session_path=session_path, **fn_kwargs)
 
     def prep_test() -> None:
-        for session_path in session_paths:
+        for session_path in tqdm.tqdm(
+            session_paths, desc='Processing test sessions', leave=False
+        ):
             _prepare_test(session_path=session_path, **fn_kwargs)
 
     if stage == 'train':
@@ -164,7 +164,7 @@ if __name__ == '__main__':
     # 2. For binary masks:
     # $ python3 notebooks/memory_map/dmd.py --driver 1 --type masks --multiply 255 --resize 64
     # 3. For masked RGB, RGBD, depth images:
-    # $ python3 notebooks/memory_map/dmd.py --driver 1 --type <{rgb, rgbd, depth}> --resize 64 --mask
+    # $ python3 notebooks/memory_map/dmd.py --driver 1 --type <{rgb, rgbd, depth, source_depth}> --resize 64 --mask
     parser = argparse.ArgumentParser(
         description='Process images into a memory-mapped file.',
         usage='python3 run_memory_map_conversion.py --path <path> [--output <output>] [--resize <resize>] [--extension <extension>]',
@@ -227,4 +227,15 @@ if __name__ == '__main__':
     )
 
     args = parser.parse_args()
-    main(args)
+
+    pprint(args)
+
+    if not args.driver and not args.session:
+        print('Running for all drivers...')
+        input('Press Enter to continue...')
+        for driver in range(1, 6):
+            args.driver = driver
+            main(args)
+    else:
+        input('Press Enter to continue...')
+        main(args)

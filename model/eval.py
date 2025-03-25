@@ -1,4 +1,7 @@
+from collections.abc import Sequence
+
 import numpy as np
+from sklearn.metrics import roc_auc_score
 
 
 def get_y_proba_from_errors(
@@ -26,3 +29,30 @@ def get_y_proba_from_errors(
     # Normalize using the quantile range
     y_proba = [(x - q_low_err) / (q_up_err - q_low_err) for x in errors_clipped]
     return y_proba
+
+
+def compute_best_roc_auc(
+    y_true: Sequence[float | int],
+    errors: dict[str, list[float]],
+    iqr: tuple[float, float] = (0.0, 1.0),
+) -> dict[str, str | float | list[float]]:
+    """Evaluate ROC AUC score for each metric, choose the best one."""
+    best_metric = 'mse'
+    best_roc_auc_score = 0.0
+    for key, value in errors.items():
+        y_proba = get_y_proba_from_errors(value, iqr=iqr)
+        if len(y_proba) != len(y_true):
+            print(
+                f'Ground truth and predictions have different lengths! Truncating from {len(y_true)} to {len(y_proba)}.'
+            )
+            y_true = y_true[: len(y_proba)]
+        roc_auc = roc_auc_score(y_true, y_proba)
+        if roc_auc > best_roc_auc_score:
+            best_metric = key
+            best_roc_auc_score = roc_auc
+
+    return {
+        'best_metric': best_metric,
+        'roc_auc': float(best_roc_auc_score),
+        'y_proba': get_y_proba_from_errors(errors[best_metric], iqr=iqr),
+    }
