@@ -32,8 +32,15 @@ def download_all_runs(
                 'artifact_uri': r.info.artifact_uri,
                 **r.data.params,  # Add all parameters
                 **{
-                    f'metric.{k}': v for k, v in r.data.metrics.items()
-                },  # Add all metrics with "metric." prefix
+                    # Add all metrics with "metric." prefix
+                    f'metric.{k}': v
+                    for k, v in r.data.metrics.items()
+                },
+                **{
+                    # Add all tags with "tag." prefix
+                    f'tag.{k}': v
+                    for k, v in r.data.tags.items()
+                },
             }
             for r in all_runs
         ]
