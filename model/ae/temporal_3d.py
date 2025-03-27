@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import logging
-from typing import Any, Literal, TypeAlias, TypedDict
+from typing import Any, Literal, TypedDict
 
 import pytorch_lightning as L
 import torch
@@ -14,7 +14,7 @@ from model.common import BatchSizeDict, ModelStages
 
 from .common import Decoder, Encoder
 
-RegularizationType: TypeAlias = Literal[
+type RegularizationType = Literal[
     'l2_model_weights', 'l2_encoder_weights', 'contractive'
 ]
 
@@ -68,12 +68,13 @@ class STAELoss(nn.Module):
             weights = torch.arange(  # e.g., [4, 3, 2, 1] for T=4
                 T, 0, -1, dtype=torch.float32, device=future_targets.device
             )
-            weights /= weights.sum()  # Normalize weights
+            weights /= T**2
+            # weights /= weights.sum()  # Normalize weights
             prediction_errors = ((future_predictions - future_targets) ** 2).mean(
                 dim=[1, 3, 4]  # Mean over spatial dimensions
             )
-            # Mean over the batch dimension and multiply by the weights
-            L_pred = (weights * prediction_errors.mean(dim=0)).sum()
+            # Multiply temporal dimension by the weights
+            L_pred = (weights * prediction_errors).sum()
         else:
             L_pred = torch.tensor(0.0, device=future_targets.device)
 
