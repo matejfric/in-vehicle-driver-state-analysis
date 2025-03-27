@@ -71,7 +71,7 @@ class STAELoss(nn.Module):
             weights /= T**2
             # weights /= weights.sum()  # Normalize weights
             prediction_errors = ((future_predictions - future_targets) ** 2).mean(
-                dim=[1, 3, 4]  # Mean over spatial dimensions
+                dim=[0, 1, 3, 4]  # Mean over spatial and batch dimensions
             )
             # Multiply temporal dimension by the weights
             L_pred = (weights * prediction_errors).sum()
