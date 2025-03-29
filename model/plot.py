@@ -1140,5 +1140,10 @@ def plot_results(
         plt.subplots_adjust(hspace=0.1)  # Pad vertically between subplots
 
     if save_path:
+        save_path = Path(save_path)
+        if not save_path.parent.exists():
+            save_path.parent.mkdir(parents=True, exist_ok=True)
+        if not save_path.suffix:
+            save_path = save_path.with_suffix('.pdf')
         plt.savefig(save_path, bbox_inches='tight')
     plt.show()
