@@ -137,12 +137,12 @@ def _process_data_rows(data_rows: list[str]) -> list[str]:
                 try:
                     value = _parse_float(cell_content)
                     if max_values[i] is not None and value == max_values[i]:
-                        modified_cell = r'\textbf{' + cell_content + '}'
+                        modified_cell = r'\textbf{' + f'{value:.3f}' + '}'
                 except ValueError:
                     pass
-            modified_cells.append(modified_cell)
+            modified_cells.append(modified_cell.removesuffix(r'\\'))
         # Rebuild the row
-        new_row = ' & '.join(modified_cells)
+        new_row = ' & '.join(modified_cells) + r'\\'
         processed_rows.append(new_row)
 
     return processed_rows

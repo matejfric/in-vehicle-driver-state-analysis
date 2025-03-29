@@ -1120,7 +1120,13 @@ def plot_results(
 
         if not legend_outside:
             ax.legend(
-                loc='lower right' if which == 'roc' else 'best',
+                loc='lower right' if which == 'roc' else 'lower left',
+                fancybox=True,  # rounded corners
+                facecolor='white',
+                framealpha=0.75,  # 3/4 opaque
+                frameon=1,
+                borderpad=0.5,
+                edgecolor='black',
             )
         else:
             ax.legend(
