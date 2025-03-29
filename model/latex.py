@@ -24,12 +24,12 @@ def pivotize_drivers(
     pivot_df = pivot_df[[col for col in pivot_df.columns if col != 'all'] + ['all']]
     pivot_df.columns.name = None
     pivot_df.reset_index(inplace=True)
-    pivot_df = pivot_df.rename(columns={'all': 'All', 'source_type': 'Source'})
+    pivot_df = pivot_df.rename(columns={'all': 'All', 'source_type': 'Image Type'})
     return pivot_df
 
 
 def get_caption(model: str, dataset: str) -> str:
-    return f'{model} AU-ROC scores for different {dataset} drivers and source types.'
+    return f'{model} AU-ROC scores for different {dataset} drivers and image types.'
 
 
 def pivot_table_to_latex(
