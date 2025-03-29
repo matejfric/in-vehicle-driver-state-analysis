@@ -3,6 +3,34 @@ from pathlib import Path
 
 import pandas as pd
 
+# This file contains functions to process and format LaTeX tables for model evaluation results.
+
+
+def pivotize_drivers(
+    df: pd.DataFrame, source_type_map: dict, driver_name_mapping: dict
+) -> pd.DataFrame:
+    df = df.copy()
+    df['source_type'] = df['source_type'].replace(source_type_map)
+    pivot_df = pd.pivot_table(
+        df, index='source_type', columns='driver', values='metric.roc_auc'
+    )
+    pivot_df = pivot_df.rename(
+        columns={k: f'Driver {v}' for k, v in driver_name_mapping.items() if k != 'all'}
+    )
+    if 'all' not in pivot_df.columns:
+        pivot_df['all'] = None
+    pivot_df['Mean'] = pivot_df.drop(columns=['all'], errors='ignore').mean(axis=1)
+    # Move 'all' to the end
+    pivot_df = pivot_df[[col for col in pivot_df.columns if col != 'all'] + ['all']]
+    pivot_df.columns.name = None
+    pivot_df.reset_index(inplace=True)
+    pivot_df = pivot_df.rename(columns={'all': 'All', 'source_type': 'Source'})
+    return pivot_df
+
+
+def get_caption(model: str, dataset: str) -> str:
+    return f'{model} AU-ROC scores for different {dataset} drivers and source types.'
+
 
 def pivot_table_to_latex(
     df: pd.DataFrame,
