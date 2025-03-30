@@ -180,6 +180,7 @@ def plot_temporal_autoencoder_reconstruction(
     time_dim_index: Literal[0, 1] = 0,
     show_heatmap: bool = True,
     show_metrics: bool = True,
+    legend_font_size: int = 19,
 ) -> None:
     """Plot predictions from a model on a dataset.
 
@@ -216,7 +217,9 @@ def plot_temporal_autoencoder_reconstruction(
     dataset = data_loader.dataset
     n_cols = 3 if show_heatmap else 2
     n_rows = limit or len(indices)  # type: ignore (either limit or indices is provided)
-    fig, axes = plt.subplots(n_rows, n_cols, figsize=(n_cols * 4, n_rows * 4))
+    fig, axes = plt.subplots(
+        n_rows, n_cols, figsize=(n_cols * 5, n_rows * 4), layout='compressed'
+    )
 
     if limit:
         indices = (
@@ -262,14 +265,14 @@ def plot_temporal_autoencoder_reconstruction(
         if show_metrics:
             axes[row_idx, 1].text(  # type: ignore
                 # (0, 0) is lower-left and (1, 1) is upper-right
-                0.98,
-                0.98,
+                0.972,
+                0.972,
                 f'MSE={mse:.3f}\nFRO={fro_norm:.3f}',
                 bbox={'boxstyle': 'round', 'facecolor': 'white', 'pad': 0.5},
                 ha='right',
                 va='top',
                 transform=axes[row_idx, 1].transAxes,  # type: ignore
-                fontsize=9,
+                fontsize=legend_font_size,
             )
         if show_heatmap:
             heatmap = axes[row_idx, 2].imshow(diff, cmap='jet')  # type: ignore
@@ -286,10 +289,7 @@ def plot_temporal_autoencoder_reconstruction(
 
     # Add a colorbar for the heatmap
     if show_heatmap:
-        height_factor = 1 / n_rows  # Dynamically scale the colorbar height
-        cbar_ax = fig.add_axes([0.92, (1 - height_factor) / 2, 0.02, height_factor])  # type: ignore
-        # cbar_ax = fig.add_axes([0.92, 0.15, 0.02, 0.7])  # [left, bottom, width, height]
-        plt.colorbar(heatmap, cax=cbar_ax, label='Absolute Difference')
+        plt.colorbar(heatmap, ax=axes, label='Absolute Difference', shrink=1.6 / n_rows)
 
     if save_path:
         plt.savefig(save_path)
@@ -516,7 +516,7 @@ def plot_learning_curves(
     csv_log_path: str | Path,
     save_path: str | Path | None = None,
     metrics: dict[str, str] = {'jaccard': 'Jaccard Index', 'f1s': 'F1 Score'},
-    figsize: tuple[int, int] = (15, 5),
+    figsize: tuple[int | float, int | float] = (15, 5),
     loss_name: str = 'loss',
     linewidth: float = 2.0,
 ) -> None:
@@ -626,7 +626,10 @@ def plot_error_and_anomalies(
         frameon=1,
         borderpad=0.5,
         edgecolor='black',
+        fontsize=plt.rcParams['font.size'] - 4,
     )
+
+    plt.tight_layout()
 
     if save_path:
         plt.savefig(save_path)
@@ -638,9 +641,10 @@ def plot_pr_chart(
     y_true: np.ndarray | list[int],
     y_pred_proba: np.ndarray | list[float],
     save_path: str | Path | None = None,
-    figsize: tuple[int, int] = (7, 7),
+    figsize: tuple[int, int] = (8, 6),
     cmap: str = 'rainbow',
     cbar_text: str = 'Thresholds',
+    title: str = 'Precision-Recall Chart',
 ) -> tuple[float, float]:
     """
     Plot Precision-Recall curve with optimal threshold.
@@ -653,7 +657,7 @@ def plot_pr_chart(
         Predicted probabilities.
     save_path : str or Path, optional
         If provided, the plot is saved to this path.
-    figsize : tuple, default=(7, 7)
+    figsize : tuple, default=(8, 6)
         Figure size.
     cmap : str, default='rainbow'
         Colormap for the thresholds.
@@ -700,10 +704,11 @@ def plot_pr_chart(
         [optimal_recall, optimal_recall], [0, optimal_precision], 'k', linestyle='solid'
     )
     plt.text(
-        optimal_recall + 0.01,  # - 0.2,
-        optimal_precision / 2,
+        # + 0.01 or - 0.25 (if <0 place on the left, but depends on font size),
+        optimal_recall + 0.01,
+        optimal_precision / 2 + 0.05,
         f'T={optimal_threshold:.2f}',
-        fontsize=12,
+        fontsize=plt.rcParams['font.size'] - 4,
     )
 
     # Add a colorbar to indicate threshold values.
@@ -711,7 +716,8 @@ def plot_pr_chart(
     cbar.set_label(cbar_text)
 
     # Set chart details.
-    plt.title('Precision-Recall Chart')
+    if title:
+        plt.title(title)
     plt.xlim([0, 1])
     plt.ylim([0, 1])
     plt.axis('square')
@@ -731,9 +737,10 @@ def plot_roc_chart(
     y_true: np.ndarray | list[int],
     y_pred_proba: np.ndarray | list[float],
     save_path: str | Path | None = None,
-    figsize: tuple[int, int] = (7, 7),
+    figsize: tuple[int, int] = (8, 6),
     cmap: str = 'rainbow',
     cbar_text: str = 'Thresholds',
+    title: str = 'ROC Chart',
 ) -> tuple[float, float]:
     """Plot ROC curve with optimal threshold.
 
@@ -743,7 +750,7 @@ def plot_roc_chart(
         True binary labels.
     y_pred_proba : np.ndarray
         Predicted probabilities.
-    figsize : tuple, default=(7, 7)
+    figsize : tuple, default=(8, 6)
         Figure size.
     cmap : str, default='rainbow'
         Colormap for the thresholds. One of `matplotlib.pyplot.colormaps()`.
@@ -789,11 +796,13 @@ def plot_roc_chart(
         fpr[optimal_idx] + 0.01,
         (fpr[optimal_idx] + tpr[optimal_idx]) / 2,
         f'J={optimal_threshold:.2f}',
-        fontsize=12,
+        fontsize=plt.rcParams['font.size'] - 4,
     )
     cbar = plt.colorbar(scatter, shrink=0.7)
     cbar.set_label(cbar_text)
-    plt.title('ROC Chart')
+
+    if title:
+        plt.title(title)
     plt.xlim([0, 1])
     plt.ylim([0, 1])
     plt.axis('square')

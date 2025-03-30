@@ -11,7 +11,7 @@ from tqdm import tqdm
 
 logger = logging.getLogger(__name__)
 
-DRIVER_MAPPING: dict[str, int] = {
+MRL_DRIVER_MAPPING: dict[str, int] = {
     '2021_08_31_geordi_enyaq': 1,
     '2021_11_18_jakubh_enyaq': 2,
     '2021_11_05_michal_enyaq': 4,
@@ -19,7 +19,7 @@ DRIVER_MAPPING: dict[str, int] = {
     '2021_11_18_dans_enyaq': 6,
     '2024_07_02_radovan_enyaq': -1,  # Not in the original papers
 }
-DRIVER_NAMES_MAPPING: dict[str, int] = {
+MRL_DRIVER_NAMES_MAPPING: dict[str, int] = {
     'geordi': 1,
     'jakubh': 2,
     'michal': 4,
