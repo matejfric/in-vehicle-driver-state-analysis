@@ -1,4 +1,5 @@
 from collections.abc import Sequence
+from typing import Literal
 
 import numpy as np
 from sklearn.metrics import roc_auc_score
@@ -35,10 +36,12 @@ def compute_best_roc_auc(
     y_true: Sequence[float | int],
     errors: dict[str, list[float]],
     iqr: tuple[float, float] = (0.0, 1.0),
+    metric: Literal['mse', 'mae', 'fro'] | None = None,
 ) -> dict[str, str | float | list[float]]:
     """Evaluate ROC AUC score for each metric, choose the best one."""
     best_metric = 'mse'
     best_roc_auc_score = 0.0
+    roc_auc_scores = {}
     for key, value in errors.items():
         y_proba = get_y_proba_from_errors(value, iqr=iqr)
         if len(y_proba) != len(y_true):
@@ -47,12 +50,16 @@ def compute_best_roc_auc(
             )
             y_true = y_true[: len(y_proba)]
         roc_auc = roc_auc_score(y_true, y_proba)
+        roc_auc_scores[key] = roc_auc
         if roc_auc > best_roc_auc_score:
             best_metric = key
             best_roc_auc_score = roc_auc
 
+    if metric is not None:
+        best_metric = metric
+
     return {
         'best_metric': best_metric,
-        'roc_auc': float(best_roc_auc_score),
+        'roc_auc': float(roc_auc_scores[best_metric]),
         'y_proba': get_y_proba_from_errors(errors[best_metric], iqr=iqr),
     }
