@@ -8,7 +8,7 @@ import papermill as pm
 # %%
 job_dir_root = Path(f'jobs/{datetime.now().strftime("%Y-%m-%d-%H%M")}')
 drivers = ['geordi', 'poli', 'michal', 'dans', 'jakub']
-source_types = ['masks']
+source_types = ['masks', 'depth']
 pprint(
     dict(
         job_dir_root=job_dir_root,
