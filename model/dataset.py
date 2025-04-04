@@ -304,6 +304,7 @@ class TemporalAutoencoderDatasetDMD(Dataset):
         source_type: Literal[
             'depth', 'rgb', 'masks', 'rgbd', 'source_depth', 'rgb_source_depth'
         ] = 'depth',
+        model_type: Literal['tae', 'stae'] = 'tae',
     ) -> None:
         """Dataset for temporal autoencoder supporting multiple video files.
 
@@ -346,6 +347,7 @@ class TemporalAutoencoderDatasetDMD(Dataset):
         self.default_transform_ = T.ToTensor()
         self.transforms = transforms
         self.input_transforms = input_transforms
+        self.model_type = model_type
 
         # Load all memory map files and calculate cumulative indices
         self.video_files = sorted(
@@ -362,12 +364,18 @@ class TemporalAutoencoderDatasetDMD(Dataset):
 
         self.videos: list[VideoInfo] = []
         current_idx = 0
-
         for video_file in self.video_files:
             memory_map = MemMapReader(video_file, memory_map_image_shape)
-            video_length = get_last_window_index(
-                len(memory_map), window_size, time_step
-            )
+            try:
+                video_length = get_last_window_index(
+                    len(memory_map), window_size, time_step
+                )
+                if model_type == 'stae':
+                    # For STAE, we need to subtract the length of the future frames
+                    video_length -= window_size * time_step
+            except ValueError:
+                # The video is too short, skip it
+                continue
 
             self.videos.append(
                 VideoInfo(
@@ -383,6 +391,8 @@ class TemporalAutoencoderDatasetDMD(Dataset):
 
     def __len__(self) -> int:
         """Total number of temporal slices across all videos."""
+        if self.model_type == 'stae':
+            return max(0, self.length_ - self.window_size)
         return self.length_
 
     def _locate_video(self, idx: int) -> tuple[VideoInfo, int]:
@@ -392,7 +402,7 @@ class TemporalAutoencoderDatasetDMD(Dataset):
                 return video, idx - video.start_idx
         raise IndexError(f'Index {idx} is out of bounds')
 
-    def __getitem__(self, idx: int) -> DatasetItem:
+    def _get_temporal_tensor(self, idx: int) -> torch.Tensor:
         # Find which video contains this index
         video_info, local_idx = self._locate_video(idx)
 
@@ -407,11 +417,19 @@ class TemporalAutoencoderDatasetDMD(Dataset):
 
         if self.time_dim_index == 1:
             temporal_tensor = temporal_tensor.permute(1, 0, 2, 3)
+        return temporal_tensor
 
+    def __getitem__(self, idx: int) -> DatasetItem:
+        temporal_tensor = self._get_temporal_tensor(idx)
+        if self.model_type == 'stae':
+            # For STAE, we need to return the future frames as the mask
+            temporal_tensor_future = self._get_temporal_tensor(idx + self.window_size)
         return DatasetItem(
             image=temporal_tensor,
-            mask=temporal_tensor,
-            filename=f'{video_info.memory_map.memmap_file}_{local_idx}',
+            mask=temporal_tensor
+            if self.model_type == 'tae'
+            else temporal_tensor_future,
+            filename=idx,
         )
 
 

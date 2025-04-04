@@ -181,6 +181,7 @@ def plot_temporal_autoencoder_reconstruction(
     show_heatmap: bool = True,
     show_metrics: bool = True,
     legend_font_size: int = 19,
+    model_type: Literal['tae', 'stae'] = 'tae',
 ) -> None:
     """Plot predictions from a model on a dataset.
 
@@ -232,6 +233,9 @@ def plot_temporal_autoencoder_reconstruction(
         sequence = dataset[idx]['image']
         with torch.no_grad():
             reconstruction = model(sequence.unsqueeze(0).to(device))[0]  # type: ignore
+        if model_type == 'stae':
+            # (C, T, H, W)
+            reconstruction = reconstruction[0]
         reconstruction = reconstruction.cpu()
 
         t = 0  # temporal index (plot the first frame only)

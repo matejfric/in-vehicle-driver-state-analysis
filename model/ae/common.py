@@ -1,5 +1,5 @@
 from collections import defaultdict
-from typing import Any
+from typing import Any, Literal
 
 import torch
 import torch.nn as nn
@@ -26,6 +26,7 @@ def evaluate_model_parallel(
     test_dataloader: DataLoader,
     batch_size: int = 16,
     num_workers: int = 4,
+    model_type: Literal['tae', 'stae'] = 'tae',
 ) -> dict[str, list[float]]:
     """Evaluate a model in parallel."""
     if torch.cuda.is_available():
@@ -66,6 +67,10 @@ def evaluate_model_parallel(
 
             # Forward pass
             output = model(input_seq)
+            if model_type == 'stae':
+                # For STAE, we only take the reconstruction during
+                # inference and discard the prediction.
+                output = output[0]
 
             # Move results to CPU for error calculation
             output = output.cpu()
@@ -76,7 +81,7 @@ def evaluate_model_parallel(
                 sample_output = output[i]
                 sample_input = input_seq[i]
 
-                # MSE error
+                # MSE
                 mse = (
                     F.mse_loss(sample_output, sample_input, reduction='none')
                     .mean(dim=1)
@@ -84,7 +89,7 @@ def evaluate_model_parallel(
                     .mean()
                     .item()
                 )
-                # MAE error
+                # MAE
                 mae = (
                     F.l1_loss(sample_output, sample_input, reduction='none')
                     .mean(dim=1)
