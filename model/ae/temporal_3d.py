@@ -206,7 +206,9 @@ class STAEModel(L.LightningModule):
         self.metrics_ = dict(
             mae=mean_absolute_error,
             mse=mean_squared_error,
-            fro=lambda x, y: torch.norm(x - y, dim=1, p='fro'),
+            # Mean reduced Frobenius norm for height and width, assuming
+            # tensors with dimensions (B,C,T,H,W) or (B,T,C,H,W).
+            fro=lambda x, y: torch.norm((x - y), p='fro', dim=[-1, -2]).mean(),
         )
 
     def forward(
