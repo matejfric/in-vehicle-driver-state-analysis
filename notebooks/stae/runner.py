@@ -8,9 +8,10 @@ import papermill as pm
 
 # %%
 job_dir_root = Path(f'jobs/{datetime.now().strftime("%Y-%m-%d-%H%M")}')
-drivers = ['geordi']  # [1, 2, 3, 4, 5, 'geordi', 'poli', 'michal', 'dans', 'jakub']
-source_types = ['depth']  # ['masks', 'images', 'depth']
-dataset: Literal['mrl', 'dmd'] = 'mrl'
+# [1, 2, 3, 4, 5, 'geordi', 'poli', 'michal', 'dans', 'jakub']
+drivers = [1, 2, 3, 4, 5]
+source_types = ['source_depth']  # ['masks', 'images', 'depth', 'source_depth']
+dataset: Literal['mrl', 'dmd'] = 'dmd'
 pprint(
     dict(
         job_dir_root=job_dir_root,

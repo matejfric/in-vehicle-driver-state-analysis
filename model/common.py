@@ -22,6 +22,7 @@ MRL_DRIVER_MAPPING: dict[str, int] = {
 MRL_DRIVER_NAMES_MAPPING: dict[str, int] = {
     'geordi': 1,
     'jakubh': 2,
+    'jakub': 2,
     'michal': 4,
     'poli': 5,
     'dans': 6,
