@@ -778,7 +778,13 @@ def plot_roc_chart(
     roc_auc = auc(fpr, tpr)
     j_scores = tpr - fpr
     optimal_idx = j_scores.argmax()
-    optimal_threshold = thresholds[optimal_idx]
+    if optimal_idx == 0:
+        warnings.warn(
+            'Optimal threshold is 0.0, which may indicate that the model is not performing well.'
+        )
+        optimal_threshold = 0.0
+    else:
+        optimal_threshold = thresholds[optimal_idx]
 
     plt.plot(fpr, tpr, c='black', label=f'AUC={roc_auc:.3f}')
     scatter = plt.scatter(fpr, tpr, c=thresholds, cmap=cmap)
