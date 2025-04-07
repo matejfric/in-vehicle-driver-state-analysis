@@ -1,0 +1,4 @@
+models/
+mlruns/
+*.mp4
+*.ipynb
