@@ -21,6 +21,7 @@
 # %autoreload 2
 
 # %%
+import concurrent.futures
 import queue
 import threading
 import time
@@ -275,6 +276,7 @@ class ParallelProcessor(threading.Thread):
             ]
         ) = get_masks_onnx if isinstance(seg_model, ONNXModel) else get_masks
         self.daemon = True
+        self.thread_pool = concurrent.futures.ThreadPoolExecutor(max_workers=2)
 
     def run(self) -> None:
         """Process images with MDE and SEG models in parallel using batch processing."""
@@ -298,6 +300,8 @@ class ParallelProcessor(threading.Thread):
                         self._process_batch(batch_images, batch_times)
 
                     self.output_queue.put(None)
+                    # Shutdown thread pool when done
+                    self.thread_pool.shutdown()
                     return
 
                 img, timing_info = item
@@ -329,15 +333,16 @@ class ParallelProcessor(threading.Thread):
             )
 
         start_time = time.time()
-        # TODO: use a pool of threads instead of creating new threads each time
-        mde_thread = threading.Thread(target=process_mde_batch)
-        mask_thread = threading.Thread(target=process_mask_batch)
 
-        mde_thread.start()
-        mask_thread.start()
+        # Submit tasks to thread pool
+        futures = [
+            self.thread_pool.submit(process_mde_batch),
+            self.thread_pool.submit(process_mask_batch),
+        ]
 
-        mde_thread.join()
-        mask_thread.join()
+        # Wait for both tasks to complete
+        concurrent.futures.wait(futures)
+
         parallel_time = time.time() - start_time
 
         mde_batch = mde_results[0]
