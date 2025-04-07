@@ -24,7 +24,8 @@
 import queue
 import threading
 import time
-from collections import deque
+from collections import defaultdict, deque
+from collections.abc import Callable
 from pathlib import Path
 from typing import Literal
 
@@ -34,13 +35,10 @@ import matplotlib.pyplot as plt
 import mlflow.pyfunc
 import numpy as np
 import torch
-from common import ONNXModel
+from common import ONNXModel, normalize, preprocess_depth_anything_v2, sigmoid
 from PIL import Image
 from tqdm.auto import tqdm
 from transformers import Pipeline, pipeline
-
-# %%
-print('hello')
 
 # %% [markdown]
 # ## Load Models
@@ -48,8 +46,8 @@ print('hello')
 # This expects that the models are already downloaded and available in the `models` directory. You can download the models with [`download_models.py`](download_models.py).
 
 # %%
-mde_model_source: Literal['huggingface', 'onnx'] = 'huggingface'
-seg_model_source: Literal['mlflow', 'onnx'] = 'mlflow'
+mde_model_source: Literal['huggingface', 'onnx'] = 'onnx'
+seg_model_source: Literal['mlflow', 'onnx'] = 'onnx'
 ae_model_source: Literal['mlflow'] = 'mlflow'
 
 # %%
@@ -89,7 +87,7 @@ else:
 
 # Load depth estimation model
 if mde_model_source == 'onnx':
-    mde_model = ONNXModel('models/depth_anything_v2_vits.onnx')
+    mde_model = ONNXModel('models/depth_anything_v2_vits_dynamic.onnx')
 elif mde_model_source == 'huggingface':
     mde_model = pipeline(
         task='depth-estimation',
@@ -122,6 +120,37 @@ def get_mde(model: Pipeline, img: np.ndarray) -> tuple[np.ndarray, float]:
     return depth, processing_time
 
 
+def get_mde_maps(
+    model: Pipeline, images: list[np.ndarray]
+) -> tuple[list[np.ndarray], float]:
+    """Get batched depth estimation from the model."""
+    start_time = time.time()
+    images = [cv2.resize(img, (518, 518)) for img in images]
+    images_pil = [Image.fromarray(img) for img in images]  # type: ignore
+    depths = model(images_pil)
+    depths = [
+        normalize(depth['predicted_depth'].numpy())  # type: ignore
+        for depth in depths  # type: ignore
+    ]
+    processing_time = time.time() - start_time
+    return depths, processing_time / len(images)
+
+
+def get_mde_onnx(
+    model: ONNXModel, images: list[np.ndarray]
+) -> tuple[list[np.ndarray], float]:
+    """Get batched depth estimation from the ONNX model."""
+    start_time = time.time()
+    images = [
+        preprocess_depth_anything_v2(cv2.resize(img, (518, 518))) for img in images
+    ]
+    batch = np.concatenate(images, axis=0)
+    depth_maps = model.predict(batch)
+    depth_maps = [normalize(depth_map) for depth_map in depth_maps]
+    processing_time = time.time() - start_time
+    return depth_maps, processing_time / len(images)
+
+
 def get_mask(
     model: mlflow.pyfunc.PyFuncModel, img: np.ndarray, img_size: tuple[int, int]
 ) -> tuple[np.ndarray, float]:
@@ -137,6 +166,39 @@ def get_mask(
     binary_mask = (mask_numpy > 0.5).astype(np.uint8)
     processing_time = time.time() - start_time
     return binary_mask, processing_time
+
+
+def get_masks(
+    model: mlflow.pyfunc.PyFuncModel,
+    images: list[np.ndarray],
+    img_size: tuple[int, int],
+) -> tuple[list[np.ndarray], float]:
+    """Get batched masks from the model."""
+    start_time = time.time()
+    images = [
+        np.transpose(cv2.resize(img, img_size), (2, 0, 1)).astype(np.float32)
+        for img in images
+    ]
+    batch = np.stack(images, axis=0)
+    predictions = model.predict(batch)
+    binary_masks = [(sigmoid(p.squeeze()) > 0.5).astype(np.uint8) for p in predictions]
+    processing_time = time.time() - start_time
+    return binary_masks, processing_time / len(images)
+
+
+def get_masks_onnx(
+    model: ONNXModel, images: list[np.ndarray], img_size: tuple[int, int]
+) -> tuple[list[np.ndarray], float]:
+    """Get batched masks from the ONNX model."""
+    start_time = time.time()
+    images = [cv2.resize(img, img_size).astype(np.float32) for img in images]
+    batch = np.stack(images, axis=0)
+    batch = np.transpose(batch, (0, 3, 1, 2))  # HWC -> NCHW
+    masks = model.predict(batch)
+    masks = [sigmoid(mask.squeeze()) for mask in masks]
+    binary_masks = [(mask > 0.5).astype(np.uint8) for mask in masks]
+    processing_time = time.time() - start_time
+    return binary_masks, processing_time / len(images)
 
 
 def mask_mde(
@@ -183,57 +245,109 @@ class ParallelProcessor(threading.Thread):
         self,
         input_queue: queue.Queue,
         output_queue: queue.Queue,
-        mde_model: Pipeline,
-        seg_model: mlflow.pyfunc.PyFuncModel,
+        mde_model: Pipeline | ONNXModel,
+        seg_model: mlflow.pyfunc.PyFuncModel | ONNXModel,
+        batch_size: int = 2,
     ) -> None:
         threading.Thread.__init__(self)
         self.input_queue = input_queue
         self.output_queue = output_queue
         self.mde_model = mde_model
         self.seg_model = seg_model
-        self.seg_input_shape = (
+        self.batch_size = batch_size
+        self.seg_input_shape_ = (
             seg_model.metadata.get_input_schema().inputs[0].shape[-2:]  # type: ignore
+            if isinstance(seg_model, mlflow.pyfunc.PyFuncModel)
+            else seg_model.input_shape[-2:]
         )
+        self.mde_func_: (
+            Callable[[ONNXModel, list[np.ndarray]], tuple[list[np.ndarray], float]]
+            | Callable[[Pipeline, list[np.ndarray]], tuple[list[np.ndarray], float]]
+        ) = get_mde_onnx if isinstance(mde_model, ONNXModel) else get_mde_maps
+        self.mask_func_: (
+            Callable[
+                [ONNXModel, list[np.ndarray], tuple[int, int]],
+                tuple[list[np.ndarray], float],
+            ]
+            | Callable[
+                [mlflow.pyfunc.PyFuncModel, list[np.ndarray], tuple[int, int]],
+                tuple[list[np.ndarray], float],
+            ]
+        ) = get_masks_onnx if isinstance(seg_model, ONNXModel) else get_masks
         self.daemon = True
 
     def run(self) -> None:
-        """Process images with MDE and SEG models in parallel."""
+        """Process images with MDE and SEG models in parallel using batch processing."""
+        batch_images = []
+        batch_times = []
+
         while True:
-            item = self.input_queue.get()
+            # Try to fill a batch
+            while len(batch_images) < self.batch_size:
+                if self.input_queue.empty():
+                    break
 
-            # Check for end of data
-            if item is None:
-                self.input_queue.task_done()
-                self.output_queue.put(None)
-                break
+                item = self.input_queue.get()
 
-            img, timing_info = item
+                # Check for end of data
+                if item is None:
+                    self.input_queue.task_done()
 
-            # Process MDE and mask in parallel using threads
-            mde_result = [None, 0]
-            mask_result = [None, 0]
+                    # Process any remaining images in the batch
+                    if batch_images:
+                        self._process_batch(batch_images, batch_times)
 
-            def process_mde() -> None:
-                mde_result[0], mde_result[1] = get_mde(self.mde_model, img)
+                    self.output_queue.put(None)
+                    return
 
-            def process_mask() -> None:
-                mask_result[0], mask_result[1] = get_mask(
-                    self.seg_model, img, self.seg_input_shape[-2:]
-                )
+                img, timing_info = item
+                batch_images.append(img)
+                batch_times.append(timing_info)
 
-            mde_thread = threading.Thread(target=process_mde)
-            mask_thread = threading.Thread(target=process_mask)
+            # Process the batch
+            if batch_images:
+                self._process_batch(batch_images, batch_times)
+                batch_images = []
+                batch_times = []
 
-            start_time = time.time()
-            mde_thread.start()
-            mask_thread.start()
+    def _process_batch(
+        self, batch_images: list[np.ndarray], batch_times: list[dict[str, float]]
+    ) -> None:
+        """Process a batch of images with MDE and SEG models."""
+        # Process MDE and mask in parallel using threads
+        mde_results = [None, 0]
+        mask_results = [None, 0]
 
-            mde_thread.join()
-            mask_thread.join()
-            parallel_time = time.time() - start_time
+        def process_mde_batch() -> None:
+            mde_results[0], mde_results[1] = self.mde_func_(
+                self.mde_model, batch_images
+            )
 
-            mde = mde_result[0]
-            mask = mask_result[0]
+        def process_mask_batch() -> None:
+            mask_results[0], mask_results[1] = self.mask_func_(
+                self.seg_model, batch_images, self.seg_input_shape_[-2:]
+            )
+
+        start_time = time.time()
+        # TODO: use a pool of threads instead of creating new threads each time
+        mde_thread = threading.Thread(target=process_mde_batch)
+        mask_thread = threading.Thread(target=process_mask_batch)
+
+        mde_thread.start()
+        mask_thread.start()
+
+        mde_thread.join()
+        mask_thread.join()
+        parallel_time = time.time() - start_time
+
+        mde_batch = mde_results[0]
+        mask_batch = mask_results[0]
+
+        # Process each item in the batch and put results in output queue
+        for i, (img, timing_info) in enumerate(zip(batch_images, batch_times)):
+            # Get individual results from batch
+            mde = mde_batch[i] if isinstance(mde_batch, list) else mde_batch
+            mask = mask_batch[i] if isinstance(mask_batch, list) else mask_batch
 
             # Combine results
             masked_mde, masking_time = mask_mde(mde, mask, (64, 64))
@@ -241,10 +355,11 @@ class ParallelProcessor(threading.Thread):
             # Update timing info
             timing_info.update(
                 {
-                    'mde_time': mde_result[1],
-                    'mask_time': mask_result[1],
+                    # Average time per image
+                    'mde_time': mde_results[1],
+                    'mask_time': mask_results[1],
                     'masking_time': masking_time,
-                    'parallel_time': parallel_time,
+                    'parallel_time': parallel_time / self.batch_size,
                 }
             )
 
@@ -300,8 +415,8 @@ class AutoencoderProcessor(threading.Thread):
 
             # Process when we have enough frames or reached the end
             if len(self.buffer) == self.temporal_dimension or not waiting_for_frames:
-                # Fill buffer if needed
                 while len(self.buffer) < self.temporal_dimension:
+                    # Duplicate the last frame to fill the buffer
                     self.buffer.append(self.buffer[-1])
 
                 # Create stacked input for autoencoder
@@ -312,8 +427,8 @@ class AutoencoderProcessor(threading.Thread):
                 # Process with autoencoder
                 start_time = time.time()
                 reconstructed = self.ae_model.predict(stacked)
-                ae_time = time.time() - start_time
                 reconstructed = reconstructed.squeeze()
+                ae_time = time.time() - start_time
 
                 # Calculate differences between masked_mde and reconstruction
                 differences = []
@@ -321,10 +436,13 @@ class AutoencoderProcessor(threading.Thread):
                     diff = np.abs(self.buffer[i] - reconstructed[i])
                     differences.append(diff)
 
-                # Update timing info for the last T frames
+                # Update timing info
                 for i in range(self.temporal_dimension):
-                    self.timing_buffer[-1 - i]['ae_time'] = (
-                        ae_time / self.temporal_dimension
+                    self.timing_buffer[i].update(
+                        {
+                            # Average time per image
+                            'ae_time': ae_time / self.temporal_dimension,
+                        }
                     )
 
                 # Output result for each frame in the temporal window
@@ -423,7 +541,7 @@ def create_mosaic(
 
         # Add timing information if available
         if timing_key and timing_key in timing_info:
-            time_text = f'{title}: {timing_info[timing_key]:.3f}s'
+            time_text = f'{title}: {1000 * timing_info[timing_key]:.1f}ms'
         else:
             time_text = title
 
@@ -490,10 +608,10 @@ def create_mosaic(
     mosaic[h : 2 * h, 2 * w : 3 * w] = diff_processed
 
     # Add overall timing information
-    total_time = sum(timing_info.values())
+    total_time = timing_info['total_time']
     cv2.putText(
         mosaic,
-        f'Total processing time: {total_time:.3f}s, FPS: {1 / total_time:.2f}',
+        f'Total processing time: {1000 * total_time:.1f}ms, FPS: {1 / total_time:.0f}',
         (10, output_size[1] - 10),
         cv2.FONT_HERSHEY_SIMPLEX,
         0.7,
@@ -512,7 +630,7 @@ def create_mosaic(
 
 # %%
 def run_pipeline_with_visualization(
-    image_paths: list[Path], output_video_path: str
+    image_paths: list[Path], output_video_path: str, fps: float = 24.0
 ) -> dict[str, list[float]]:
     # Create queues
     image_queue = queue.Queue(maxsize=8)
@@ -535,16 +653,7 @@ def run_pipeline_with_visualization(
 
     fourcc = cv2.VideoWriter_fourcc(*'mp4v')
     video_writer = None  # Will be initialized with the first frame
-
-    # Process results as they come
-    performance_stats = {
-        'load_time': [],
-        'mde_time': [],
-        'mask_time': [],
-        'masking_time': [],
-        'ae_time': [],
-        'total_time': [],
-    }
+    performance_stats = defaultdict(list)
 
     with tqdm(total=len(image_paths), desc='Processing frames') as pbar:
         while True:
@@ -566,8 +675,7 @@ def run_pipeline_with_visualization(
             total_time = sum(
                 [
                     timing_info.get('load_time', 0),
-                    timing_info.get('mde_time', 0),
-                    timing_info.get('mask_time', 0),
+                    timing_info.get('parallel_time', 0),
                     timing_info.get('masking_time', 0),
                     timing_info.get('ae_time', 0),
                 ]
@@ -575,11 +683,11 @@ def run_pipeline_with_visualization(
             timing_info['total_time'] = total_time
 
             # Update performance statistics
-            for key in performance_stats:
-                if key in timing_info:
-                    performance_stats[key].append(timing_info[key])
+            for key, value in timing_info.items():
+                performance_stats[key].append(value)
 
             # Create mosaic frame
+            # TODO: average the times over N frames
             mosaic = create_mosaic(
                 img,
                 mask,
@@ -593,7 +701,7 @@ def run_pipeline_with_visualization(
             # Initialize video writer with the first frame
             if video_writer is None:
                 video_writer = cv2.VideoWriter(
-                    output_video_path, fourcc, 10.0, (mosaic.shape[1], mosaic.shape[0])
+                    output_video_path, fourcc, fps, (mosaic.shape[1], mosaic.shape[0])
                 )
 
             # Write frame to video
@@ -616,10 +724,12 @@ def run_pipeline_with_visualization(
 
 # %%
 # Execute the pipeline and generate the mosaic video
-image_paths = sorted(Path('images').glob('*.jpg'), key=lambda x: int(x.stem))[900:]
-output_video_path = 'pipeline_visualization__.mp4'
+image_paths = sorted(Path('images').glob('*.jpg'), key=lambda x: int(x.stem))
+output_video_path = 'pipeline_visualization_30fps.mp4'
 
-performance_stats = run_pipeline_with_visualization(image_paths, output_video_path)
+performance_stats = run_pipeline_with_visualization(
+    image_paths, output_video_path, fps=30.0
+)
 
 # %%
 for k, v in performance_stats.items():
@@ -656,7 +766,8 @@ avg_times = [performance_summary[k]['avg'] for k in keys]
 
 plt.figure(figsize=(12, 6))
 bars = plt.bar(
-    keys, avg_times, color=['blue', 'green', 'orange', 'red', 'purple', 'brown']
+    keys,
+    avg_times,
 )
 
 plt.title('Average Processing Time per Stage')
@@ -669,12 +780,16 @@ for bar in bars:
     height = bar.get_height()
     plt.text(
         bar.get_x() + bar.get_width() / 2.0,
-        height + 0.01,
-        f'{height:.3f}s',
+        height,
+        f'{1000 * height:.1f}ms',
         ha='center',
         va='bottom',
     )
 
 plt.tight_layout()
+
+# add FPS to legend
+fps = 1 / np.mean(performance_stats['total_time'])
+plt.legend([f'FPS: {fps:.2f}'], loc='upper left')
 plt.savefig('performance_chart.png')
 plt.show()
