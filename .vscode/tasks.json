@@ -11,6 +11,14 @@
         "kind": "build",
         "isDefault": true
       }
+    },
+    {
+      "label": "Ruff format",
+      "type": "shell",
+      "command": "ruff",
+      "args": ["format", "${file}"],
+      "problemMatcher": [],
+      "group": "build"
     }
   ]
 }
