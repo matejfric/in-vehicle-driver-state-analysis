@@ -22,10 +22,11 @@
 
 # %%
 import concurrent.futures
+import logging
 import queue
 import threading
 import time
-from collections import defaultdict, deque
+from collections import defaultdict, deque, namedtuple
 from collections.abc import Callable
 from pathlib import Path
 from typing import Literal
@@ -35,11 +36,14 @@ import matplotlib.cm as cm
 import matplotlib.pyplot as plt
 import mlflow.pyfunc
 import numpy as np
+import pandas as pd
 import torch
 from common import ONNXModel, normalize, preprocess_depth_anything_v2, sigmoid
 from PIL import Image
 from tqdm.auto import tqdm
 from transformers import Pipeline, pipeline
+
+logging.basicConfig(level=logging.INFO)
 
 # %% [markdown]
 # ## Load Models
@@ -51,15 +55,19 @@ mde_model_source: Literal['huggingface', 'onnx'] = 'onnx'
 seg_model_source: Literal['mlflow', 'onnx'] = 'onnx'
 ae_model_source: Literal['mlflow'] = 'mlflow'
 
-# %%
 DEVICE = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+IMAGE_LIMIT = 1000 if DEVICE.type == 'cuda' else 100
 
 OUTPUT_DIR = Path('outputs')
 OUTPUT_DIR.mkdir(exist_ok=True)
 
+FPS = 30.0
+output_video_path = 'pipeline_visualization_30fps.mp4'
+
+# %%
 # Load segmentation model
 if seg_model_source == 'onnx':
-    seg_model = ONNXModel('models/seg/model/model.onnx')
+    seg_model = ONNXModel('models/seg/model/model.onnx', DEVICE)
     seg_input_shape = seg_model.input_shape
 elif seg_model_source == 'mlflow':
     seg_model = mlflow.pyfunc.load_model(
@@ -88,7 +96,7 @@ else:
 
 # Load depth estimation model
 if mde_model_source == 'onnx':
-    mde_model = ONNXModel('models/depth_anything_v2_vits_dynamic.onnx')
+    mde_model = ONNXModel('models/depth_anything_v2_vits_dynamic.onnx', DEVICE)
 elif mde_model_source == 'huggingface':
     mde_model = pipeline(
         task='depth-estimation',
@@ -436,10 +444,12 @@ class AutoencoderProcessor(threading.Thread):
                 ae_time = time.time() - start_time
 
                 # Calculate differences between masked_mde and reconstruction
+                start_time = time.time()
                 differences = []
                 for i in range(min(len(self.buffer), len(reconstructed))):
                     diff = np.abs(self.buffer[i] - reconstructed[i])
                     differences.append(diff)
+                diff_time = time.time() - start_time
 
                 # Update timing info
                 for i in range(self.temporal_dimension):
@@ -447,6 +457,7 @@ class AutoencoderProcessor(threading.Thread):
                         {
                             # Average time per image
                             'ae_time': ae_time / self.temporal_dimension,
+                            'diff_time': diff_time / self.temporal_dimension,
                         }
                     )
 
@@ -514,8 +525,9 @@ def create_mosaic(
             blank[:] = (50, 50, 50)  # Dark gray
             return blank
 
-        # Convert to 3-channel if grayscale
-        if len(img.shape) == 2 or (len(img.shape) == 3 and img.shape[2] == 1):
+        if len(img.shape) == 3 and img.shape[2] == 3:
+            img_rgb = img
+        else:
             if cmap:
                 # Apply colormap for visualization
                 normalized = img / np.max(img) if np.max(img) > 0 else img
@@ -530,8 +542,6 @@ def create_mosaic(
                         if img_rgb.max() <= 1.0
                         else img_rgb.astype(np.uint8)
                     )
-        else:
-            img_rgb = img
 
         # Make sure we have a valid RGB image before resizing
         if img_rgb.dtype != np.uint8:
@@ -562,7 +572,6 @@ def create_mosaic(
             2,
             cv2.LINE_AA,
         )
-
         return img_with_text
 
     # Process each image and add to mosaic
@@ -572,18 +581,10 @@ def create_mosaic(
     masked_mde_processed = process_image(
         masked_mde, 'Masked MDE', 'masking_time', cmap='inferno'
     )
-
-    if reconstruction is not None:
-        recon_processed = process_image(
-            reconstruction, 'Reconstruction', 'ae_time', cmap='inferno'
-        )
-    else:
-        recon_processed = process_image(None, 'Reconstruction')
-
-    if difference is not None:
-        diff_processed = process_image(difference, 'Difference', None, cmap='hot')
-    else:
-        diff_processed = process_image(None, 'Difference')
+    recon_processed = process_image(
+        reconstruction, 'Reconstruction', 'ae_time', cmap='inferno'
+    )
+    diff_processed = process_image(difference, 'Difference', 'diff_time', cmap='hot')
 
     def assert_shape(
         arr: np.ndarray, expected_shape: tuple[int, int, int], name: str = ''
@@ -613,10 +614,15 @@ def create_mosaic(
     mosaic[h : 2 * h, 2 * w : 3 * w] = diff_processed
 
     # Add overall timing information
-    total_time = timing_info['total_time']
+    total_time = timing_info['total_time_actual']
+    total_time_sequential = timing_info['total_time_sequential']
+    avg_fps = timing_info.get('avg_fps', '')
+    if avg_fps:
+        avg_fps = f', Actual mean FPS: {avg_fps:.0f}'
+
     cv2.putText(
         mosaic,
-        f'Total processing time: {1000 * total_time:.1f}ms, FPS: {1 / total_time:.0f}',
+        f'Total time parallel (sequential): {1000 * total_time:.1f}ms ({1000 * total_time_sequential:.1f}ms), FPS: {1 / total_time:.0f} ({1 / total_time_sequential:.0f}){avg_fps}',
         (10, output_size[1] - 10),
         cv2.FONT_HERSHEY_SIMPLEX,
         0.7,
@@ -632,11 +638,21 @@ def create_mosaic(
 # ## Main pipeline execution with video output
 #
 
-
 # %%
+intermediate_result_keys = [
+    'original',
+    'mask',
+    'mde',
+    'masked_mde',
+    'reconstruction',
+    'difference',
+]
+IntermediateResult = namedtuple('IntermediateResult', intermediate_result_keys)
+
+
 def run_pipeline_with_visualization(
-    image_paths: list[Path], output_video_path: str, fps: float = 24.0
-) -> dict[str, list[float]]:
+    image_paths: list[Path],
+) -> tuple[dict[str, list[float]], dict[str, list[np.ndarray]]]:
     # Create queues
     image_queue = queue.Queue(maxsize=8)
     processed_queue = queue.Queue(maxsize=8)
@@ -656,9 +672,8 @@ def run_pipeline_with_visualization(
     parallel_processor.start()
     ae_processor.start()
 
-    fourcc = cv2.VideoWriter_fourcc(*'mp4v')
-    video_writer = None  # Will be initialized with the first frame
     performance_stats = defaultdict(list)
+    intermediate_results = defaultdict(list)
 
     with tqdm(total=len(image_paths), desc='Processing frames') as pbar:
         while True:
@@ -666,17 +681,8 @@ def run_pipeline_with_visualization(
             if result is None:
                 break
 
-            (
-                img,
-                mask,
-                mde,
-                masked_mde,
-                reconstruction,
-                difference,
-                timing_info,
-            ) = result
-
             # Calculate total processing time
+            timing_info = result[-1]
             total_time = sum(
                 [
                     timing_info.get('load_time', 0),
@@ -691,110 +697,163 @@ def run_pipeline_with_visualization(
             for key, value in timing_info.items():
                 performance_stats[key].append(value)
 
-            # Create mosaic frame
-            # TODO: average the times over N frames
-            mosaic = create_mosaic(
-                img,
-                mask,
-                mde,
-                masked_mde,
-                reconstruction,
-                difference,
-                timing_info,
-            )
-
-            # Initialize video writer with the first frame
-            if video_writer is None:
-                video_writer = cv2.VideoWriter(
-                    output_video_path, fourcc, fps, (mosaic.shape[1], mosaic.shape[0])
-                )
-
-            # Write frame to video
-            video_writer.write(cv2.cvtColor(mosaic, cv2.COLOR_RGB2BGR))
+            for key, value in zip(intermediate_result_keys, result[:-1], strict=True):
+                intermediate_results[key].append(value)
 
             result_queue.task_done()
             pbar.update(1)
-
-    # Release video writer
-    if video_writer is not None:
-        video_writer.release()
 
     # Wait for all threads to complete
     image_loader.join()
     parallel_processor.join()
     ae_processor.join()
 
-    return performance_stats
+    return performance_stats, intermediate_results
 
 
 # %%
-# Execute the pipeline and generate the mosaic video
+# Execute the pipeline
 image_paths = sorted(Path('images').glob('*.jpg'), key=lambda x: int(x.stem))
-output_video_path = 'pipeline_visualization_30fps.mp4'
 
-performance_stats = run_pipeline_with_visualization(
-    image_paths, output_video_path, fps=30.0
+pipeline_start_time = time.time()
+performance_stats, intermediate_results = run_pipeline_with_visualization(
+    image_paths[:IMAGE_LIMIT]
+)
+pipeline_end_time = time.time()
+
+actual_total_time = pipeline_end_time - pipeline_start_time
+print(f'Wall-clock total runtime: {actual_total_time:.3f}s')
+print(f'Measured total runtime: {sum(performance_stats["total_time"]):.3f}s')
+
+# %%
+# Process time measurements
+df_times = pd.DataFrame(performance_stats)
+
+df_times['total_time_sequential'] = (
+    df_times['load_time']
+    + df_times['mask_time']
+    + df_times['mde_time']
+    + df_times['masking_time']
+    + df_times['ae_time']
+    + df_times['diff_time']
 )
 
-# %%
-for k, v in performance_stats.items():
-    print(f'{k}: {np.mean(v):.3f} ± {np.std(v):.3f}')
-
-# %%
-# Display performance summary
-performance_summary = {}
-for key, values in performance_stats.items():
-    if values:
-        performance_summary[key] = {
-            'min': min(values),
-            'max': max(values),
-            'avg': sum(values) / len(values),
-            'total': sum(values),
-        }
-
-print('Performance Summary (in seconds):')
-print('-' * 50)
-for key, stats in performance_summary.items():
-    print(f'{key.replace("_", " ").title()}:')
-    print(f'  Min: {stats["min"]:.3f}s')
-    print(f'  Max: {stats["max"]:.3f}s')
-    print(f'  Avg: {stats["avg"]:.3f}s')
-    print(f'  Total: {stats["total"]:.3f}s')
-    print('-' * 50)
-
-print(f'Video saved to: {output_video_path}')
-
-# %%
-# Generate performance visualization
-keys = list(performance_summary.keys())
-avg_times = [performance_summary[k]['avg'] for k in keys]
-
-plt.figure(figsize=(12, 6))
-bars = plt.bar(
-    keys,
-    avg_times,
+# "total_time" underestimates the processing time,
+# because of the parallel processing.
+# We need to scale it to the actual time.
+df_times['total_time_actual'] = df_times['total_time'] * (
+    actual_total_time / df_times['total_time'].sum()
 )
 
-plt.title('Average Processing Time per Stage')
-plt.xlabel('Processing Stage')
-plt.ylabel('Time (seconds)')
-plt.xticks(rotation=45)
+# Calculate moving average
+df_ma = df_times.rolling(window=30, min_periods=1).mean()
 
-# Add the values on top of the bars
-for bar in bars:
+df_ma.head()
+
+# %%
+time_columns = df_times[
+    [c for c in df_times.columns if c not in ['total_time']]
+].columns.tolist()
+
+# Convert to ms
+means_ms = (df_times[time_columns].mean() * 1000).round(1)
+std_errors_ms = (df_times[time_columns].sem() * 1000).round(1)
+
+df_plot = pd.DataFrame(
+    {
+        'Processing Step': time_columns,
+        'Mean Time (ms)': means_ms.values,
+        'Std Error': std_errors_ms.values,
+    }
+)
+df_plot.head(10)
+
+# %%
+plt.rcParams['font.size'] = 14
+fig, ax = plt.subplots(figsize=(14, 7))
+
+x_pos = np.arange(len(time_columns))
+bars = ax.bar(
+    x_pos,
+    means_ms,
+    color=plt.get_cmap('tab10').colors,  # type: ignore
+    yerr=std_errors_ms,
+    align='center',
+    alpha=0.8,
+    ecolor='black',
+    capsize=4,
+)
+
+ax.set_title('Processing Time Measurements')
+ax.set_xlabel('Processing Step')
+ax.set_ylabel('Time (milliseconds)')
+ax.set_xticks(x_pos)
+ax.set_xticklabels(
+    [' '.join([cc.capitalize() for cc in c.split('_')]) for c in time_columns],
+    rotation=45,
+    ha='right',
+)
+ax.grid(axis='y', linestyle='--', alpha=0.7)
+
+# Add value labels on top of each bar
+for i, bar in enumerate(bars):
     height = bar.get_height()
-    plt.text(
+    ax.text(
         bar.get_x() + bar.get_width() / 2.0,
-        height,
-        f'{1000 * height:.1f}ms',
+        height + std_errors_ms.iloc[i],
+        f'{height:.1f}ms',
         ha='center',
         va='bottom',
     )
 
+fps = 1 / df_times['total_time_actual'].mean()
+fps_sequential = 1 / df_times['total_time_sequential'].mean()
+plt.legend(
+    [f'Actual FPS: {fps:.2f}', f'Sequential FPS: {fps_sequential:.2f}'],
+    loc='upper left',
+)
+
 plt.tight_layout()
 
-# add FPS to legend
-fps = 1 / np.mean(performance_stats['total_time'])
-plt.legend([f'FPS: {fps:.2f}'], loc='upper left')
-plt.savefig('performance_chart.png')
+plt.savefig(OUTPUT_DIR / f'performance_chart_{DEVICE.type}.png')
 plt.show()
+
+# %%
+# Create video writer
+fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+video_writer = None  # Will be initialized with the first frame
+
+for i, values in tqdm(
+    enumerate(
+        zip(*(intermediate_results[k] for k in intermediate_result_keys), strict=True)
+    ),
+    total=len(df_times),
+    desc='Exporting video',
+    unit='frame',
+):
+    r = IntermediateResult(*values)
+    mosaic = create_mosaic(
+        r.original,
+        r.mask,
+        r.mde,
+        r.masked_mde,
+        r.reconstruction,
+        r.difference,
+        df_ma.iloc[i].to_dict(),
+    )
+
+    # Initialize video writer with the first frame
+    if video_writer is None:
+        video_writer = cv2.VideoWriter(
+            OUTPUT_DIR / output_video_path,
+            fourcc,
+            FPS,
+            (mosaic.shape[1], mosaic.shape[0]),
+        )
+
+    # Write frame to video
+    video_writer.write(cv2.cvtColor(mosaic, cv2.COLOR_RGB2BGR))
+
+# Release video writer
+if video_writer is not None:
+    video_writer.release()
