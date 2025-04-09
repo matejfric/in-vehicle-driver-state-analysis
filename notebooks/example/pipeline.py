@@ -118,18 +118,7 @@ T = ae_input_shape[1]
 
 
 # %%
-def get_mde(model: Pipeline, img: np.ndarray) -> tuple[np.ndarray, float]:
-    """Get depth estimation from the model."""
-    start_time = time.time()
-    img = cv2.resize(img, (518, 518))  # default size for Depth-Anything
-    img_pil = Image.fromarray(img)  # type: ignore
-    depth = model(img_pil)['depth']  # type: ignore
-    depth = np.array(depth).astype(np.float32) / 255.0
-    processing_time = time.time() - start_time
-    return depth, processing_time
-
-
-def get_mde_maps(
+def get_mde(
     model: Pipeline, images: list[np.ndarray]
 ) -> tuple[list[np.ndarray], float]:
     """Get batched depth estimation from the model."""
@@ -158,23 +147,6 @@ def get_mde_onnx(
     depth_maps = [normalize(depth_map) for depth_map in depth_maps]
     processing_time = time.time() - start_time
     return depth_maps, processing_time / len(images)
-
-
-def get_mask(
-    model: mlflow.pyfunc.PyFuncModel, img: np.ndarray, img_size: tuple[int, int]
-) -> tuple[np.ndarray, float]:
-    """Get mask from the model."""
-    start_time = time.time()
-    img = cv2.resize(img, img_size)
-    img = np.transpose(img, (2, 0, 1))  # HWC -> CWH
-    img = img.astype(np.float32)
-    img = np.expand_dims(img, axis=0)
-    prediction = model.predict(img)
-    mask = torch.Tensor(prediction).sigmoid()
-    mask_numpy = mask.squeeze().numpy()
-    binary_mask = (mask_numpy > 0.5).astype(np.uint8)
-    processing_time = time.time() - start_time
-    return binary_mask, processing_time
 
 
 def get_masks(
@@ -272,7 +244,7 @@ class ParallelProcessor(threading.Thread):
         self.mde_func_: (
             Callable[[ONNXModel, list[np.ndarray]], tuple[list[np.ndarray], float]]
             | Callable[[Pipeline, list[np.ndarray]], tuple[list[np.ndarray], float]]
-        ) = get_mde_onnx if isinstance(mde_model, ONNXModel) else get_mde_maps
+        ) = get_mde_onnx if isinstance(mde_model, ONNXModel) else get_mde
         self.mask_func_: (
             Callable[
                 [ONNXModel, list[np.ndarray], tuple[int, int]],
@@ -332,12 +304,15 @@ class ParallelProcessor(threading.Thread):
 
         def process_mde_batch() -> None:
             mde_results[0], mde_results[1] = self.mde_func_(
-                self.mde_model, batch_images
+                self.mde_model,  # type: ignore
+                batch_images,
             )
 
         def process_mask_batch() -> None:
             mask_results[0], mask_results[1] = self.mask_func_(
-                self.seg_model, batch_images, self.seg_input_shape_[-2:]
+                self.seg_model,  # type: ignore
+                batch_images,
+                self.seg_input_shape_[-2:],
             )
 
         start_time = time.time()
@@ -654,9 +629,9 @@ def run_pipeline_with_visualization(
     image_paths: list[Path],
 ) -> tuple[dict[str, list[float]], dict[str, list[np.ndarray]]]:
     # Create queues
-    image_queue = queue.Queue(maxsize=8)
-    processed_queue = queue.Queue(maxsize=8)
-    result_queue = queue.Queue()
+    image_queue = queue.Queue(maxsize=16)
+    processed_queue = queue.Queue(maxsize=16)
+    result_queue = queue.Queue(maxsize=32)
 
     # Start threads
     image_loader = ImageLoader(image_paths, image_queue)
@@ -756,8 +731,8 @@ time_columns = df_times[
 ].columns.tolist()
 
 # Convert to ms
-means_ms = (df_times[time_columns].mean() * 1000).round(1)
-std_errors_ms = (df_times[time_columns].sem() * 1000).round(1)
+means_ms = df_times[time_columns].mean() * 1000
+std_errors_ms = df_times[time_columns].sem() * 1000
 
 df_plot = pd.DataFrame(
     {
@@ -766,17 +741,37 @@ df_plot = pd.DataFrame(
         'Std Error': std_errors_ms.values,
     }
 )
+df_plot['Processing Step'] = df_plot['Processing Step'].replace(
+    {
+        'load_time': 'Loading Time',
+        'mde_time': 'MDE Time',
+        'mask_time': 'Segmentation Time',
+        'masking_time': 'Masking Time',
+        'parallel_time': 'Fork-Join Time',
+        'ae_time': 'Autoencoder Time',
+        'diff_time': 'Difference Time',
+        'total_time_sequential': 'Total Time Sequential',
+        'total_time_actual': 'Total Time Parallel',
+    }
+)
 df_plot.head(10)
 
 # %%
-plt.rcParams['font.size'] = 14
-fig, ax = plt.subplots(figsize=(14, 7))
+try:
+    from model.fonts import set_cmu_serif_font
+
+    set_cmu_serif_font()
+except ImportError:
+    pass
+
+plt.rcParams['font.size'] = 20
+fig, ax = plt.subplots(figsize=(14, 6))
 
 x_pos = np.arange(len(time_columns))
 bars = ax.bar(
     x_pos,
     means_ms,
-    color=plt.get_cmap('tab10').colors,  # type: ignore
+    # color=plt.get_cmap('tab10').colors,  # type: ignore
     yerr=std_errors_ms,
     align='center',
     alpha=0.8,
@@ -784,12 +779,14 @@ bars = ax.bar(
     capsize=4,
 )
 
-ax.set_title('Processing Time Measurements')
-ax.set_xlabel('Processing Step')
 ax.set_ylabel('Time (milliseconds)')
+ax.set_ylim(0, 1.2 * means_ms.max())
 ax.set_xticks(x_pos)
+ax.set_yticks(
+    np.arange(0, ax.get_ylim()[1] + 1, 10),
+)
 ax.set_xticklabels(
-    [' '.join([cc.capitalize() for cc in c.split('_')]) for c in time_columns],
+    df_plot['Processing Step'],
     rotation=45,
     ha='right',
 )
@@ -804,18 +801,18 @@ for i, bar in enumerate(bars):
         f'{height:.1f}ms',
         ha='center',
         va='bottom',
+        fontsize=plt.rcParams['font.size'] - 2,
     )
 
 fps = 1 / df_times['total_time_actual'].mean()
 fps_sequential = 1 / df_times['total_time_sequential'].mean()
-plt.legend(
-    [f'Actual FPS: {fps:.2f}', f'Sequential FPS: {fps_sequential:.2f}'],
-    loc='upper left',
-)
+
+print(f'FPS: {fps:.2f}')
+print(f'Sequential FPS: {fps_sequential:.2f}')
 
 plt.tight_layout()
 
-plt.savefig(OUTPUT_DIR / f'performance_chart_{DEVICE.type}.png')
+plt.savefig(OUTPUT_DIR / f'performance-chart-{DEVICE.type}.pdf')
 plt.show()
 
 # %%
