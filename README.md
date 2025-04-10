@@ -1,32 +1,57 @@
 # Driver State Analysis
 
-## 1. Installation
+- [1. Project Organization](#1-project-organization)
+- [2. Development Environment](#2-development-environment)
+- [3. What can we do with an RGB image?](#3-what-can-we-do-with-an-rgb-image)
+
+## 1. Project Organization
+
+- [`model`](model/) - library code
+- [`notebooks`](notebooks/) - runnable code, primarily Jupyter notebooks, and Python scripts used to orchestrate notebook execution with different parameters
+  - [`notebooks/example`](notebooks/example/) - demonstration of an inference pipeline on sample data
+  - [`notebooks/datasets`](notebooks/datasets/) - dataset pre-processing
+  - [`notebooks/eda`](notebooks/eda/) - exploratory data analysis
+  - [`notebooks/sam`](notebooks/sam/) - Segment Anything Model 2 (SAM 2) inference (generation of groud truth masks). This module uses a different virtual environment than the rest of the project, as described [here](notebooks/sam/README.md)
+  - [`notebooks/semantic_segmentation`](notebooks/semantic_segmentation/) - semantic segmentation model training, evaluation, and inference
+  - [`notebooks/tae`](notebooks/tae/) - training and evaluation of Temporal Autoencoder (TAE)
+  - [`notebooks/stae`](notebooks/stae/) - training and evaluation of Spatio-Temporal Autoencoder (STAE)
+  - [`notebooks/memory_map`](notebooks/memory_map/) - export of training data into continuous memory mapped files (`np.memmap`) to speed up training (and decrease CPU demands) at the cost of increased disk space
+  - [`notebooks/clip`](notebooks/clip/) - OpenAI CLIP model (this is excluded from the thesis)
+
+## 2. Development Environment
 
 - Ubuntu 24.04
 
 ```bash
 conda env create -f environment.yml -n driver-state-analysis
-pip install -e .
+pip install -e .  # library code
 pre-commit install  # optional (development)
 ```
 
-## 2. High Level Overview
+## 3. What can we do with an RGB image?
 
-### 2.1. Input Data Processing
+The following diagram illustrates a (non-exhaustive) list of different tasks that can be performed using an RGB image as input:
 
 ```mermaid
 mindmap
-    root((RGB Image))
+    root)RGB Image)
         (GT Mask)
             YOLOv8x
                 Segment Anything 2
         (Semantic Segmentation)
-            EfficientNetB0
-                U-Net
+            EfficientNet
+            ResNet
+            U-Net
+            UNet++
         (Monocular Depth Estimation)
-            Depth Anything
-                Depth Anything 2
-            Intel MiDaS ...worse
+            Image
+                MiDaS
+                Marigold
+                Depth Anything
+                    Depth Anything 2
+            Video
+                Video Depth Anything
+                DepthCrafter
         (Edge Detection)
             Canny
             Sobel
@@ -35,36 +60,8 @@ mindmap
             Graph NN
             YOLOv11
         LBP
-        OpenAI CLIP
+        HOG
+        CLIP
         Text
-```
-
-### 2.2. Anomaly Detection
-
-#### 2.2.1. Autoencoders
-
-```mermaid
-mindmap
-    root(("`AE`"))
-        Dense
-        Convolutional
-        Sequence
-            Conv LSTM
-            Conv 3D
-            Spatio-Temporal 3D
-        Single Image
-```
-
-#### 2.2.2. Loss Functions
-
-```mermaid
-mindmap
-    root(("`AE Loss`"))
-        MAE - L1
-        MSE - L2
-        (Regularized)
-            Encoder Outputs
-            Model Weights
-            Prediction
-            Contractive
+        Skin Segmentation
 ```
