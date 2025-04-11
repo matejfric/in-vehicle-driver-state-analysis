@@ -1115,7 +1115,7 @@ def plot_results(
         driver_name = (
             driver_name_mapping[driver_name] if driver_name_mapping else driver_name
         )
-        if driver_name == 'All':
+        if str(driver_name).lower() == 'all':
             title = 'All Drivers'
         else:
             title = f'Driver {driver_name}'
