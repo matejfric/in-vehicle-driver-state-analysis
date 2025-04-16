@@ -786,7 +786,7 @@ ax.set_ylabel('Time (milliseconds)')
 ax.set_ylim(0, 1.2 * means_ms.max())
 ax.set_xticks(x_pos)
 ax.set_yticks(
-    np.arange(0, ax.get_ylim()[1] + 1, 10),
+    np.arange(0, ax.get_ylim()[1] + 1, 10 if ax.get_ylim()[1] < 100 else 100),
 )
 ax.set_xticklabels(
     df_plot['Processing Step'],
