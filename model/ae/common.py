@@ -133,6 +133,39 @@ class TimeDistributed(torch.nn.Module):
         return output
 
 
+class TimeDistributedV2(torch.nn.Module):
+    """
+    Applies a module independently to each time step of the input.
+
+    `TimeDistributedV2` is a faster and ONNX-compatible alternative to the original `TimeDistributed` module.
+    It achieves equal performance; however, since it was developed in the later stages of the project, it remains
+    unused in the current version to preserve the replicability of earlier results.
+
+    This module is included for potential use in future work.
+    """
+
+    def __init__(
+        self,
+        layer: torch.nn.Module,
+        n_time_steps: int,
+    ) -> None:
+        super().__init__()
+        self.layer = layer
+        self.n_time_steps = n_time_steps
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        # Reshape input to merge batch and time dimensions
+        batch_size, time_steps, *features = x.size()
+        x_reshaped = x.reshape(-1, *features)  # (batch_size * time_steps, ...)
+
+        # Apply the layer
+        output = self.layer(x_reshaped)
+
+        # Reshape back to (batch_size, time_steps, ...)
+        output_shape = (batch_size, time_steps, *output.size()[1:])
+        return output.view(output_shape)
+
+
 def summarize_model(
     modules: torch.nn.Module | list[torch.nn.Module],
     header: list[str] = ['Layer', 'Hyperparameters', 'Parameters'],
