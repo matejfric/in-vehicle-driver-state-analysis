@@ -67,7 +67,7 @@ output_video_path = f'pipeline_visualization_{int(FPS)}fps.mp4'
 # %%
 # Load segmentation model
 if seg_model_source == 'onnx':
-    seg_model = ONNXModel('models/seg/onnx/model.onnx', DEVICE)
+    seg_model = ONNXModel('models/seg/model/model.onnx', DEVICE)
     seg_input_shape = seg_model.input_shape
 elif seg_model_source == 'mlflow':
     seg_model = mlflow.pyfunc.load_model(
@@ -83,7 +83,7 @@ else:
 
 # Load autoencoder model
 if ae_model_source == 'onnx':
-    ae_model = ONNXModel('models/ae/onnx/model.onnx', DEVICE)
+    ae_model = ONNXModel('models/ae/model/model.onnx', DEVICE)
     ae_input_shape = ae_model.input_shape
 elif ae_model_source == 'mlflow':
     ae_model = mlflow.pyfunc.load_model(
