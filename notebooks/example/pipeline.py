@@ -53,7 +53,7 @@ logging.basicConfig(level=logging.INFO)
 # %%
 mde_model_source: Literal['huggingface', 'onnx'] = 'onnx'
 seg_model_source: Literal['mlflow', 'onnx'] = 'onnx'
-ae_model_source: Literal['mlflow'] = 'mlflow'
+ae_model_source: Literal['mlflow', 'onnx'] = 'onnx'
 
 DEVICE = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 IMAGE_LIMIT = 1000 if DEVICE.type == 'cuda' else 100
@@ -62,12 +62,12 @@ OUTPUT_DIR = Path('outputs')
 OUTPUT_DIR.mkdir(exist_ok=True)
 
 FPS = 30.0
-output_video_path = 'pipeline_visualization_30fps.mp4'
+output_video_path = f'pipeline_visualization_{int(FPS)}fps.mp4'
 
 # %%
 # Load segmentation model
 if seg_model_source == 'onnx':
-    seg_model = ONNXModel('models/seg/model/model.onnx', DEVICE)
+    seg_model = ONNXModel('models/seg/onnx/model.onnx', DEVICE)
     seg_input_shape = seg_model.input_shape
 elif seg_model_source == 'mlflow':
     seg_model = mlflow.pyfunc.load_model(
@@ -82,7 +82,10 @@ else:
     raise ValueError(f'Unsupported segmentation model source: {seg_model_source}')
 
 # Load autoencoder model
-if ae_model_source == 'mlflow':
+if ae_model_source == 'onnx':
+    ae_model = ONNXModel('models/ae/onnx/model.onnx', DEVICE)
+    ae_input_shape = ae_model.input_shape
+elif ae_model_source == 'mlflow':
     ae_model = mlflow.pyfunc.load_model(
         'models/ae/model', model_config={'device': DEVICE}
     )
@@ -363,7 +366,7 @@ class AutoencoderProcessor(threading.Thread):
         self,
         input_queue: queue.Queue,
         output_queue: queue.Queue,
-        ae_model: mlflow.pyfunc.PyFuncModel,
+        ae_model: mlflow.pyfunc.PyFuncModel | ONNXModel,
         temporal_dimension: int,
     ) -> None:
         threading.Thread.__init__(self)

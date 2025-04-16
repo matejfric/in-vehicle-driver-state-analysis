@@ -19,6 +19,8 @@ class ONNXModel:
         ----------
         path: str | Path
             Path to the ONNX model file.
+        device: str | torch.device | None
+            Device to run the model on.
 
         Notes
         -----
