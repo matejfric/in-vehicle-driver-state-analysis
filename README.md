@@ -1,4 +1,6 @@
-# Driver State Analysis
+# In-Vehicle Driver State Analysis
+
+![PipelineAnimation](https://github.com/user-attachments/assets/de14f020-1b32-4931-8702-5cd302d5a9de)
 
 - [1. Project Organization](#1-project-organization)
 - [2. Development Environment](#2-development-environment)
@@ -65,3 +67,7 @@ mindmap
         Text
         Skin Segmentation
 ```
+
+## References
+
+1. Ortega, J., Kose, N., Cañas, P., Chao, M.a., Unnervik, A., Nieto, M., Otaegui, O., & Salgado, L. (2020). DMD: A Large-Scale Multi-Modal Driver Monitoring Dataset for Attention and Alertness Analysis. In: A. Bartoli & A. Fusiello (eds), Computer Vision -- ECCV 2020 Workshops (pg. 387–405). Springer International Publishing.
