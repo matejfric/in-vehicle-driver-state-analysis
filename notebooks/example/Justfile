@@ -1,0 +1,74 @@
+# Set default values
+IMAGE := "driver-state-example"
+
+# Set a default recipe to show help if no recipe is given
+default:
+    @echo "Available commands:"
+    @echo "  just build [--cuda]           # Build Docker image"
+    @echo "  just jupyter                  # Run Jupyter notebook server"
+    @echo "  just python                   # Run Python inside container"
+    @echo "  just bash                     # Run Bash inside container"
+
+# Build the Docker image
+build *args:
+    #!/usr/bin/env sh
+    if echo "{{ args }}" | grep -q "\--cuda"; then
+        echo "Building with CUDA support using Dockerfile.cuda"
+        docker buildx build --load -f Dockerfile.cuda -t {{ IMAGE }} .
+    else
+        echo "Building with standard Dockerfile"
+        docker buildx build --load -f Dockerfile -t {{ IMAGE }} .
+    fi
+
+# Run a command in the docker container
+_docker_run *args:
+    #!/usr/bin/env sh
+    cuda_flag=""
+    build_args=""
+    cmd_args=""
+    
+    # Parse arguments to separate --cuda flag from command args
+    for arg in {{ args }}; do
+        if [ "$arg" = "--cuda" ]; then
+            cuda_flag="--cuda"
+            build_args="$build_args --cuda"
+        else
+            cmd_args="$cmd_args $arg"
+        fi
+    done
+    
+    # Build with appropriate Dockerfile
+    just build $build_args
+    
+    # Run with GPU support if cuda flag was provided
+    if [ -n "$cuda_flag" ]; then
+        docker run --rm --runtime=nvidia --gpus all -it -e PYTHONPATH="${PWD}" --workdir "${PWD}" -v /mnt:/mnt -v "${PWD}":"${PWD}" {{ IMAGE }} $cmd_args
+    else
+        docker run --rm -it -e PYTHONPATH="${PWD}" --workdir "${PWD}" -v /mnt:/mnt -v "${PWD}":"${PWD}" {{ IMAGE }} $cmd_args
+    fi
+
+# Run Jupyter server
+jupyter *args:
+    #!/usr/bin/env sh
+    cuda_flag=""
+    build_args=""
+    
+    # Check for --cuda flag
+    if echo "{{ args }}" | grep -q "\--cuda"; then
+        cuda_flag="--runtime=nvidia --gpus all"
+        build_args="--cuda"
+    fi
+    
+    # Build with appropriate Dockerfile
+    just build $build_args
+    
+    # Run with or without GPU support
+    docker run --rm $cuda_flag -it -e PYTHONPATH="${PWD}" -p 8888:8888 --workdir "${PWD}" -v /mnt:/mnt -v "${PWD}":"${PWD}" {{ IMAGE }}
+
+# Run python with optional CUDA support
+python *args:
+    just _docker_run {{ args }} python
+
+# Run bash with optional CUDA support
+bash *args:
+    just _docker_run {{ args }} bash
