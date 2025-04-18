@@ -1,5 +1,7 @@
 # In-Vehicle Driver State Analysis
 
+[![DOI](https://zenodo.org/badge/858760757.svg)](https://doi.org/10.5281/zenodo.15242002)
+
 ![PipelineAnimation](https://github.com/user-attachments/assets/de14f020-1b32-4931-8702-5cd302d5a9de)
 
 (Model results on the Driver Monitoring Dataset [[1]](#ref1).)
