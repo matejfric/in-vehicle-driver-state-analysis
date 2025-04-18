@@ -705,7 +705,7 @@ print(f'Measured total runtime: {sum(performance_stats["total_time"]):.3f}s')
 
 # %%
 # Process time measurements
-df_times = pd.DataFrame(performance_stats)
+df_times = pd.DataFrame(performance_stats).clip(lower=0, axis=1)
 
 df_times['total_time_sequential'] = (
     df_times['load_time']
