@@ -4,8 +4,9 @@ authors:
   - family-names: Frič
     given-names: Matěj
     orcid: https://orcid.org/0009-0000-9885-1521
-title: "In-Vehicle Driver State Analysis Using Image Segmentation"
+title: "Supplementary Material: In-Vehicle Driver State Analysis Using Image Segmentation"
 version: 1.0.0
 license: MIT
 date-released: 2025-04-30
 repository-code: "https://github.com/matejfric/in-vehicle-driver-state-analysis"
+doi: 10.5281/zenodo.15242002
