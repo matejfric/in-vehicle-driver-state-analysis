@@ -963,11 +963,17 @@ def _plot_roc_curve(
     fpr, tpr, thresholds = roc_curve(y_true[: len(y_pred_proba)], y_pred_proba)
     roc_auc = auc(fpr, tpr)
 
+    label = f'{source_type.ljust(justification)} AUC={roc_auc:.3f}'
+
+    if source_type == 'Maskλ':
+        # ad hoc special case
+        label = f'Mask  AUC={roc_auc:.3f}\n(λ=1e-6)'
+
     # Plot ROC curve
     ax.plot(
         fpr,
         tpr,
-        label=f'{source_type.ljust(justification)} AUC={roc_auc:.3f}',
+        label=label,
         **plot_kwargs,
     )
 
@@ -1005,11 +1011,17 @@ def _plot_pr_curve(
     optimal_idx = np.array(f1_scores).argmax()
     optimal_threshold = thresholds[optimal_idx]  # noqa
 
+    label = f'{source_type.ljust(justification)} AUC={pr_auc:.3f}'
+
+    if source_type == 'Maskλ':
+        # ad hoc special case
+        label = f'Mask  AUC={pr_auc:.3f}\n(λ=1e-6)'
+
     # Plot PR curve
     ax.step(
         recall,
         precision,
-        label=f'{source_type.ljust(justification)} AUC={pr_auc:.3f}',
+        label=label,
         **plot_kwargs,
     )
 

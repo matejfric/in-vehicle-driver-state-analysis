@@ -100,7 +100,7 @@ def load_predictions(
             results = json.load(f)
         source_type = (
             source_type_map[row['source_type']]
-            if source_type_map
+            if source_type_map and row['source_type'] in source_type_map
             else row['source_type']
         )
         data[row['driver']][source_type] = results
