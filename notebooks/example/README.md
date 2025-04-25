@@ -72,6 +72,16 @@ Note: This method is not recommended.
    python pipeline.py
    ```
 
-## Credits
+4. Or alternatively, start a Jupyter server and open the notebook [`pipeline.ipynb`](./pipeline.ipynb) in your browser.
+
+   ```bash
+   jupyter lab --ip=0.0.0.0 --allow-root
+   ```
+
+## Notes
+
+The autoencoder model is not identical to the one described in the thesis, because the original model is using a different implementation of the [`TimeDistributed`](../../model/ae/common.py) layer which is not compatible with ONNX. The newer ONNX-compatible model uses `TimeDistributedV2` and achieves ~0.2% higher AU-ROC on the test set while being significantly faster thanks to ONNX Runtime.
+
+## References
 
 - Depth Anything 2 ONNX export: [https://github.com/fabio-sim/Depth-Anything-ONNX](https://github.com/fabio-sim/Depth-Anything-ONNX)

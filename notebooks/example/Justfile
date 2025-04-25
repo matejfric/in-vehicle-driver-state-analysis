@@ -5,9 +5,9 @@ IMAGE := "driver-state-example"
 default:
     @echo "Available commands:"
     @echo "  just build [--cuda]           # Build Docker image"
-    @echo "  just jupyter                  # Run Jupyter notebook server"
-    @echo "  just python                   # Run Python inside container"
-    @echo "  just bash                     # Run Bash inside container"
+    @echo "  just jupyter [--cuda]         # Run Jupyter notebook server"
+    @echo "  just python [--cuda]          # Run Python inside container"
+    @echo "  just bash [--cuda]            # Run Bash inside container"
 
 # Build the Docker image
 build *args:
