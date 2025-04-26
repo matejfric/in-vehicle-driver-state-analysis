@@ -57,6 +57,7 @@ AE_MODEL_SOURCE: Literal['onnx'] = 'onnx'
 
 # Temporal AE or Spatio-Temporal AE
 AE_MODEL_TYPE: Literal['tae', 'stae'] = 'tae'
+MPMC_CHANNEL_MAX_SIZE = 16 if AE_MODEL_TYPE == 'tae' else 32
 
 DEVICE = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 IMAGE_LIMIT = 1000 if DEVICE.type == 'cuda' else 100
@@ -670,9 +671,9 @@ def run_pipeline_with_visualization(
     image_paths: list[Path],
 ) -> tuple[dict[str, list[float]], dict[str, list[np.ndarray]]]:
     # Create queues
-    image_queue = queue.Queue(maxsize=16)
-    processed_queue = queue.Queue(maxsize=16)
-    result_queue = queue.Queue(maxsize=32)
+    image_queue = queue.Queue(maxsize=MPMC_CHANNEL_MAX_SIZE)
+    processed_queue = queue.Queue(maxsize=MPMC_CHANNEL_MAX_SIZE)
+    result_queue = queue.Queue(maxsize=MPMC_CHANNEL_MAX_SIZE)
 
     # Start threads
     image_loader = ImageLoader(image_paths, image_queue)
