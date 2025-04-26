@@ -8,7 +8,7 @@
 #       format_version: '1.3'
 #       jupytext_version: 1.17.0
 #   kernelspec:
-#     display_name: torch
+#     display_name: Python 3 (ipykernel)
 #     language: python
 #     name: python3
 # ---
@@ -60,6 +60,13 @@ IMAGE_LIMIT = 1000 if DEVICE.type == 'cuda' else 100
 
 OUTPUT_DIR = Path('outputs')
 OUTPUT_DIR.mkdir(exist_ok=True)
+
+# The autoencoder model processes T frames at a time. There are generally two options:
+# 1. Use a sliding window approach with overlap, i.e., step size of one frame.
+# 2. Use a non-overlapping approach, where the autoencoder processes T frames
+#    at a time, and then moves to the next T frames. This is more efficient,
+#    but may not be as accurate. (The speed decrease is mitigated by the parallelization.)
+USE_SLIDING_WINDOW = True
 
 FPS = 30.0
 output_video_path = f'pipeline_visualization_{int(FPS)}fps.mp4'
@@ -368,6 +375,7 @@ class AutoencoderProcessor(threading.Thread):
         output_queue: queue.Queue,
         ae_model: mlflow.pyfunc.PyFuncModel | ONNXModel,
         temporal_dimension: int,
+        use_sliding_window: bool = True,
     ) -> None:
         threading.Thread.__init__(self)
         self.input_queue = input_queue
@@ -377,12 +385,21 @@ class AutoencoderProcessor(threading.Thread):
             self.temporal_dimension = temporal_dimension
         else:
             raise ValueError('Temporal dimension must be greater than 0')
+        self.use_sliding_window = use_sliding_window
         self.buffer = deque(maxlen=temporal_dimension)
         self.img_buffer = deque(maxlen=temporal_dimension)
         self.mde_buffer = deque(maxlen=temporal_dimension)
         self.mask_buffer = deque(maxlen=temporal_dimension)
         self.timing_buffer = deque(maxlen=temporal_dimension)
         self.daemon = True
+
+    def _pop_buffers(self) -> None:
+        """Remove one item from processing buffers."""
+        self.buffer.popleft()
+        self.img_buffer.popleft()
+        self.mde_buffer.popleft()
+        self.mask_buffer.popleft()
+        self.timing_buffer.popleft()
 
     def run(self) -> None:
         """Process frames with the autoencoder model."""
@@ -422,46 +439,65 @@ class AutoencoderProcessor(threading.Thread):
                 ae_time = time.time() - start_time
 
                 # Calculate differences between masked_mde and reconstruction
+                processing_range = range(min(len(self.buffer), len(reconstructed)))
                 start_time = time.time()
-                differences = []
-                for i in range(min(len(self.buffer), len(reconstructed))):
-                    diff = np.abs(self.buffer[i] - reconstructed[i])
-                    differences.append(diff)
+                differences = [
+                    np.abs(self.buffer[i] - reconstructed[i]) for i in processing_range
+                ]
+                mean_difference = np.mean(differences, axis=0)
                 diff_time = time.time() - start_time
 
                 # Update timing info
-                for i in range(self.temporal_dimension):
-                    self.timing_buffer[i].update(
+                if self.use_sliding_window:
+                    # Update timing info for the current frame
+                    self.timing_buffer[0].update(
                         {
-                            # Average time per image
-                            'ae_time': ae_time / self.temporal_dimension,
-                            'diff_time': diff_time / self.temporal_dimension,
+                            'ae_time': ae_time,
+                            'diff_time': diff_time,
                         }
                     )
-
-                # Output result for each frame in the temporal window
-                for i in range(min(len(self.buffer), len(reconstructed))):
-                    self.output_queue.put(
-                        (
-                            self.img_buffer[i],
-                            self.mask_buffer[i],
-                            self.mde_buffer[i],
-                            self.buffer[i],
-                            reconstructed[i] if i < len(reconstructed) else None,
-                            differences[i] if i < len(differences) else None,
-                            self.timing_buffer[i],
+                else:
+                    # Update timing info for all frames in the temporal window
+                    for i in range(len(self.timing_buffer)):
+                        self.timing_buffer[i].update(
+                            {
+                                # Average time per image
+                                'ae_time': ae_time / self.temporal_dimension,
+                                'diff_time': diff_time / self.temporal_dimension,
+                            }
                         )
+
+                def _get_output_queue_item(index: int) -> tuple:
+                    """Get the output queue item for the given index."""
+                    if self.use_sliding_window:
+                        diff = mean_difference
+                    else:
+                        diff = differences[index] if index < len(differences) else None
+                    return (
+                        self.img_buffer[index],
+                        self.mask_buffer[index],
+                        self.mde_buffer[index],
+                        self.buffer[index],
+                        reconstructed[index] if index < len(reconstructed) else None,
+                        diff,
+                        self.timing_buffer[index],
                     )
 
-                # Clear buffer, by sliding by T frames at a time.
-                # (Alternatively, could be 1 for sliding window approach
-                #  with overlap, but this is more efficient.)
-                for _ in range(self.temporal_dimension):
-                    self.buffer.popleft()
-                    self.img_buffer.popleft()
-                    self.mde_buffer.popleft()
-                    self.mask_buffer.popleft()
-                    self.timing_buffer.popleft()
+                if self.use_sliding_window:
+                    self.output_queue.put(_get_output_queue_item(0))
+                else:
+                    # Output result for each frame in the temporal window
+                    for i in range(min(len(self.buffer), len(reconstructed))):
+                        self.output_queue.put(_get_output_queue_item(i))
+
+                # Pop from buffers
+                if self.use_sliding_window:
+                    # Remove a single frame
+                    self._pop_buffers()
+                else:
+                    # Remove T frames (clear buffers)
+                    for _ in range(self.temporal_dimension):
+                        self._pop_buffers()
 
             self.input_queue.task_done()
 
@@ -644,7 +680,9 @@ def run_pipeline_with_visualization(
         mde_model,
         seg_model,
     )
-    ae_processor = AutoencoderProcessor(processed_queue, result_queue, ae_model, T)
+    ae_processor = AutoencoderProcessor(
+        processed_queue, result_queue, ae_model, T, USE_SLIDING_WINDOW
+    )
 
     image_loader.start()
     parallel_processor.start()
@@ -653,7 +691,8 @@ def run_pipeline_with_visualization(
     performance_stats = defaultdict(list)
     intermediate_results = defaultdict(list)
 
-    with tqdm(total=len(image_paths), desc='Processing frames') as pbar:
+    total = len(image_paths) - T + 1 if USE_SLIDING_WINDOW else len(image_paths)
+    with tqdm(total=total, desc='Processing frames') as pbar:
         while True:
             result = result_queue.get()
             if result is None:
@@ -667,6 +706,7 @@ def run_pipeline_with_visualization(
                     timing_info.get('parallel_time', 0),
                     timing_info.get('masking_time', 0),
                     timing_info.get('ae_time', 0),
+                    timing_info.get('diff_time', 0),
                 ]
             )
             timing_info['total_time'] = total_time
