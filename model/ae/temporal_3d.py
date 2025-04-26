@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import copy
 import logging
 from typing import Any, Literal, TypedDict
 
@@ -191,6 +192,9 @@ class STAEModel(L.LightningModule):
             else None
         )
 
+        self.use_2d_bottleneck = use_2d_bottleneck
+        self.use_extra_3dconv = use_extra_3dconv
+        self.use_prediction_branch = use_prediction_branch
         self.batch_size_dict = batch_size_dict
         self.lr = learning_rate
         self.eps = eps
@@ -307,6 +311,26 @@ class STAEModel(L.LightningModule):
     def configure_optimizers(self) -> torch.optim.Optimizer:  # type: ignore
         optimizer = torch.optim.Adam(self.parameters(), lr=self.lr, eps=self.eps)  # type: ignore
         return optimizer
+
+    def remove_prediction_branch(self) -> STAEModel:
+        """
+        Remove the prediction branch from the model.
+        """
+        modified_model = STAEModel(
+            batch_size_dict=self.batch_size_dict,
+            learning_rate=self.lr,
+            time_dim_index=self.time_dim_index,  # type: ignore
+            eps=self.eps,
+            lambda_reg=self.lambda_reg,
+            regularization=self.regularization,  # type: ignore
+            use_extra_3dconv=self.use_extra_3dconv,
+            use_2d_bottleneck=self.use_2d_bottleneck,
+            use_prediction_branch=False,
+        )
+        modified_model.encoder = copy.deepcopy(self.encoder)
+        modified_model.decoder = copy.deepcopy(self.decoder)
+        modified_model.to(self.device)
+        return modified_model
 
 
 class Conv3dEncodeBlock(nn.Module):
