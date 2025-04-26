@@ -51,9 +51,12 @@ logging.basicConfig(level=logging.INFO)
 # This expects that the models are already downloaded and available in the `models` directory. You can download the models with [`download_models.py`](download_models.py).
 
 # %%
-mde_model_source: Literal['huggingface', 'onnx'] = 'onnx'
-seg_model_source: Literal['mlflow', 'onnx'] = 'onnx'
-ae_model_source: Literal['mlflow', 'onnx'] = 'onnx'
+MDE_MODEL_SOURCE: Literal['huggingface', 'onnx'] = 'onnx'
+SEG_MODEL_SOURCE: Literal['mlflow', 'onnx'] = 'onnx'
+AE_MODEL_SOURCE: Literal['onnx'] = 'onnx'
+
+# Temporal AE or Spatio-Temporal AE
+AE_MODEL_TYPE: Literal['tae', 'stae'] = 'tae'
 
 DEVICE = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 IMAGE_LIMIT = 1000 if DEVICE.type == 'cuda' else 100
@@ -69,14 +72,14 @@ OUTPUT_DIR.mkdir(exist_ok=True)
 USE_SLIDING_WINDOW = True
 
 FPS = 30.0
-output_video_path = f'pipeline_visualization_{int(FPS)}fps.mp4'
+OUTPUT_VIDEO_NAME = f'pipeline_visualization_{int(FPS)}fps.mp4'
 
 # %%
 # Load segmentation model
-if seg_model_source == 'onnx':
+if SEG_MODEL_SOURCE == 'onnx':
     seg_model = ONNXModel('models/seg/model/model.onnx', DEVICE)
     seg_input_shape = seg_model.input_shape
-elif seg_model_source == 'mlflow':
+elif SEG_MODEL_SOURCE == 'mlflow':
     seg_model = mlflow.pyfunc.load_model(
         'models/seg/model', model_config={'device': DEVICE}
     )
@@ -86,41 +89,32 @@ elif seg_model_source == 'mlflow':
     )
     seg_input_shape = seg_input_schema.inputs[0].shape
 else:
-    raise ValueError(f'Unsupported segmentation model source: {seg_model_source}')
+    raise ValueError(f'Unsupported segmentation model source: {SEG_MODEL_SOURCE}')
 
 # Load autoencoder model
-if ae_model_source == 'onnx':
-    ae_model = ONNXModel('models/ae/model/model.onnx', DEVICE)
+if AE_MODEL_SOURCE == 'onnx':
+    ae_model = ONNXModel(f'models/{AE_MODEL_TYPE}/model/model.onnx', DEVICE)
     ae_input_shape = ae_model.input_shape
-elif ae_model_source == 'mlflow':
-    ae_model = mlflow.pyfunc.load_model(
-        'models/ae/model', model_config={'device': DEVICE}
-    )
-    ae_input_schema = ae_model.metadata.get_input_schema()
-    assert ae_input_schema is not None, (
-        'Input schema is not available for the autoencoder model'
-    )
-    ae_input_shape = ae_input_schema.inputs[0].shape
 else:
-    raise ValueError(f'Unsupported autoencoder model source: {ae_model_source}')
+    raise ValueError(f'Unsupported autoencoder model source: {AE_MODEL_SOURCE}')
 
 # Load depth estimation model
-if mde_model_source == 'onnx':
+if MDE_MODEL_SOURCE == 'onnx':
     mde_model = ONNXModel('models/depth_anything_v2_vits_dynamic.onnx', DEVICE)
-elif mde_model_source == 'huggingface':
+elif MDE_MODEL_SOURCE == 'huggingface':
     mde_model = pipeline(
         task='depth-estimation',
         model='depth-anything/Depth-Anything-V2-Small-hf',
         device=DEVICE,
     )
 else:
-    raise ValueError(f'Unsupported depth model source: {mde_model_source}')
+    raise ValueError(f'Unsupported depth model source: {MDE_MODEL_SOURCE}')
 
 print(f'Autoencoder model input shape: (B, T, C, H, W) = {ae_input_shape}')
 print(f'Segmentation model input shape: (B, C, H, W) = {seg_input_shape}')
 
 # Get temporal dimension from autoencoder model
-T = ae_input_shape[1]
+T = ae_input_shape[1] if AE_MODEL_TYPE == 'tae' else ae_input_shape[2]
 
 
 # %% [markdown]
@@ -222,7 +216,10 @@ class ImageLoader(threading.Thread):
         """Load images and put them in the output queue."""
         for path in self.image_paths:
             start_time = time.time()
-            img = cv2.cvtColor(cv2.imread(str(path)), cv2.COLOR_BGR2RGB)
+            img = cv2.imread(str(path))
+            if img is None:
+                raise ValueError(f'Failed to load image: {path}')
+            img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
             loading_time = time.time() - start_time
             self.output_queue.put((img, {'load_time': loading_time}))
         # Signal end of data with None
@@ -376,11 +373,13 @@ class AutoencoderProcessor(threading.Thread):
         ae_model: mlflow.pyfunc.PyFuncModel | ONNXModel,
         temporal_dimension: int,
         use_sliding_window: bool = True,
+        ae_model_type: Literal['tae', 'stae'] = 'tae',
     ) -> None:
         threading.Thread.__init__(self)
         self.input_queue = input_queue
         self.output_queue = output_queue
         self.ae_model = ae_model
+        self.ae_model_type = ae_model_type
         if temporal_dimension > 0:
             self.temporal_dimension = temporal_dimension
         else:
@@ -427,13 +426,16 @@ class AutoencoderProcessor(threading.Thread):
                     # Duplicate the last frame to fill the buffer
                     self.buffer.append(self.buffer[-1])
 
-                # Create stacked input for autoencoder
-                stacked = np.stack(list(self.buffer), axis=0)
-                stacked = np.expand_dims(stacked, axis=0)  # Add batch dimension
-                stacked = np.expand_dims(stacked, axis=2)  # Add channel dimension
-
                 # Process with autoencoder
                 start_time = time.time()
+                # Temporal dimension
+                stacked = np.stack(list(self.buffer), axis=0)
+                # Batch dimension
+                stacked = np.expand_dims(stacked, axis=0)
+                # Channel dimension
+                stacked = np.expand_dims(
+                    stacked, axis=2 if self.ae_model_type == 'tae' else 1
+                )
                 reconstructed = self.ae_model.predict(stacked)
                 reconstructed = reconstructed.squeeze()
                 ae_time = time.time() - start_time
@@ -681,7 +683,12 @@ def run_pipeline_with_visualization(
         seg_model,
     )
     ae_processor = AutoencoderProcessor(
-        processed_queue, result_queue, ae_model, T, USE_SLIDING_WINDOW
+        processed_queue,
+        result_queue,
+        ae_model,
+        T,
+        USE_SLIDING_WINDOW,
+        ae_model_type=AE_MODEL_TYPE,
     )
 
     image_loader.start()
@@ -885,7 +892,7 @@ for i, values in tqdm(
     # Initialize video writer with the first frame
     if video_writer is None:
         video_writer = cv2.VideoWriter(
-            OUTPUT_DIR / output_video_path,
+            OUTPUT_DIR / OUTPUT_VIDEO_NAME,
             fourcc,
             FPS,
             (mosaic.shape[1], mosaic.shape[0]),
