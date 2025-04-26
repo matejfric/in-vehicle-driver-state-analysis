@@ -12,7 +12,7 @@ LOCAL_DIR = Path().cwd() / 'models'
 
 seg_model_uri = 'mlflow-artifacts:/7631752f9ba344e58f10d59f972ac342/a3084291e6b74d0fa39fa52c0801ce8c/artifacts/model'
 tae_model_uri = 'mlflow-artifacts:/34294c9653fc48309a2302eb44b3be4b/f6aef4dd035340648ec48e696ca46c33/artifacts/model'
-stae_model_uri = 'mlflow-artifacts:/59d0b3cc656e4fada574028be15d7bc9/2ab50b0c0ab14632bf7d5abd60c55e9f/artifacts/model'
+stae_model_uri = 'mlflow-artifacts:/59d0b3cc656e4fada574028be15d7bc9/5c05f9761b274acfbfcfbbc585a3a0f2/artifacts/model'
 
 seg_model_local_path = LOCAL_DIR / 'seg'
 tae_model_local_path = LOCAL_DIR / 'tae'
