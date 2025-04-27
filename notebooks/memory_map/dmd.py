@@ -15,9 +15,9 @@ from model.prep_func_builder import PreprocessingFunctionBuilder
 def _prepare_train(
     session_path: Path,
     resize: int,
-    source: str,
     source_extension: str,
     source_dir: str,
+    output_name: str,
     func: Callable[[Path, tuple[int, int]], np.ndarray],
     channels: int | None = None,
     overwrite: bool = False,
@@ -35,7 +35,7 @@ def _prepare_train(
         if not image_paths:
             raise ValueError(f'No images found in {dir}.')
 
-        output_file = dir.parent / 'memory_maps' / f'{source}_{resize}.dat'
+        output_file = dir.parent / 'memory_maps' / f'{output_name}_{resize}.dat'
 
         # Write the memory-mapped file
         mm_writer = MemMapWriter(
@@ -51,9 +51,9 @@ def _prepare_train(
 def _prepare_test(
     session_path: Path,
     resize: int,
-    source: str,
     source_extension: str,
     source_dir: str,
+    output_name: str,
     func: Callable[[Path, tuple[int, int]], np.ndarray],
     channels: int | None = None,
     overwrite: bool = False,
@@ -74,7 +74,7 @@ def _prepare_test(
     if not image_paths:
         raise ValueError(f'No images found in {session_path}.')
 
-    output_file = session_path / 'memory_maps' / f'{source}_{resize}.dat'
+    output_file = session_path / 'memory_maps' / f'{output_name}_{resize}.dat'
 
     # Write the memory-mapped file
     mm_writer = MemMapWriter(
@@ -97,6 +97,7 @@ def main(args: argparse.Namespace) -> None:
     source = args.type
     stage = args.stage
     overwrite = args.overwrite
+    output_name = args.output_name if args.output_name else source
     if source == 'rgb':
         channels = 3
     elif source == 'rgbd':
@@ -120,7 +121,7 @@ def main(args: argparse.Namespace) -> None:
             depth_dir_name='source_depth', depth_threshold=2000
         )
     if args.mask:
-        prep_func_builder = prep_func_builder.apply_mask()
+        prep_func_builder = prep_func_builder.apply_mask(ir=source == 'source_depth')
     if args.multiply:
         prep_func_builder = prep_func_builder.multiply(args.multiply)
 
@@ -128,12 +129,12 @@ def main(args: argparse.Namespace) -> None:
 
     fn_kwargs = dict(
         resize=resize,
-        source=source,
         func=func,
         channels=channels,
         overwrite=overwrite,
         source_extension=source_extension,
         source_dir=source_dir,
+        output_name=output_name,
     )
 
     def prep_train() -> None:
@@ -165,6 +166,7 @@ if __name__ == '__main__':
     # $ python3 notebooks/memory_map/dmd.py --driver 1 --type masks --multiply 255 --resize 64
     # 3. For masked RGB, RGBD, depth images:
     # $ python3 notebooks/memory_map/dmd.py --driver 1 --type <{rgb, rgbd, depth, source_depth}> --resize 64 --mask
+    # $ python3 notebooks/memory_map/dmd.py --driver 1 --type source_depth --resize 64 --mask --output-name source_depth_ir_masked
     parser = argparse.ArgumentParser(
         description='Process images into a memory-mapped file.',
         usage='python3 run_memory_map_conversion.py --path <path> [--output <output>] [--resize <resize>] [--extension <extension>]',
@@ -180,6 +182,8 @@ if __name__ == '__main__':
             'rgb_source_depth',
             'video_depth_anything',
             'masks',
+            'masks_ir',
+            'ir',
         ],
         required=True,
         help='Type of images to process.',
@@ -224,6 +228,11 @@ if __name__ == '__main__':
         choices=[1, 2, 3, 4, 5],
         type=int,
         help='Choose driver ID to extract all corresponding sessions.',
+    )
+    parser.add_argument(
+        '--output-name',
+        type=str,
+        help='Name of the memory map to be used instead of `type`.',
     )
 
     args = parser.parse_args()

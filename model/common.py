@@ -367,3 +367,34 @@ def preprocess_depth_frame(
     # Map the range [0, depth_threshold] to [0, 255]
     img8 = ((frame_clipped / depth_threshold) * 255).astype(np.uint8)
     return np.asarray(pad_to_square(Image.fromarray(img8)))
+
+
+def crop_aspect_ratio(image: np.ndarray, aspect_ratio: float) -> np.ndarray:
+    """
+    Crop the image to the specified aspect ratio. The image is cropped from the center.
+
+    Example
+    -------
+    >>> image = cv2.imread('path_to_image.jpg')
+    >>> cropped_image = crop_aspect_ratio(image, 4/3)
+    """
+    height, width = image.shape[:2]
+    new_width = width
+    new_height = int(width * (1 / aspect_ratio))
+
+    # If the new height is larger than the original, adjust the width instead
+    if new_height > height:
+        new_height = height
+        new_width = int(height * aspect_ratio)
+
+    # Calculate the cropping coordinates
+    x_center = width // 2
+    y_center = height // 2
+
+    # Calculate the top-left corner of the crop
+    x1 = x_center - new_width // 2
+    y1 = y_center - new_height // 2
+    x2 = x1 + new_width
+    y2 = y1 + new_height
+
+    return image[y1:y2, x1:x2]

@@ -10,7 +10,7 @@ import numpy as np
 from PIL import Image
 from tqdm import tqdm
 
-from model.common import pad_to_square, preprocess_depth_frame
+from model.common import crop_aspect_ratio, pad_to_square, preprocess_depth_frame
 
 ROOT: Final[Path] = Path.home() / 'source' / 'driver-dataset' / 'dmd'
 CATEGORIES: Final[list[str]] = ['normal', 'anomal']
@@ -58,7 +58,7 @@ OTHER_ACTIONS: Final[list[str]] = DROWSINESS + [
     'transition/taking control',
     'transition/giving control',
 ]
-SOURCE_TYPES: Final[list[str]] = ['rgb', 'depth']
+SOURCE_TYPES: Final[list[str]] = ['rgb', 'depth', 'ir']
 DRIVER_SESSION_MAPPING: Final[dict[int, list[str]]] = {
     1: [
         'gA_1_s1_2019-03-08T09;31;15+01;00',
@@ -180,7 +180,7 @@ def _get_distraction_mapping(annotations_file_path: str | Path) -> dict[int, int
 def extract_frames(
     input_video_path: str | Path,
     annotations_file_path: str | Path,
-    source_type: Literal['rgb', 'depth'],
+    source_type: Literal['rgb', 'depth', 'ir'],
     output_base_dir: str | Path | None = None,
     target_size: tuple[int, int] | None = None,
     force_overwrite: bool = False,
@@ -251,6 +251,8 @@ def extract_frames(
         # Disable RGB conversion for depth videos
         cap.set(cv2.CAP_PROP_CONVERT_RGB, 0)
         export_extension = 'png'
+    elif source_type == 'ir':
+        export_extension = 'png'
     else:
         export_extension = 'jpg'
 
@@ -272,6 +274,12 @@ def extract_frames(
                 target_dir = 'source_depth'
             else:
                 target_dir = source_type
+                if source_type == 'ir':
+                    # Convert IR frames to grayscale
+                    frame = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+
+            if source_type == 'depth' or source_type == 'ir':
+                frame = crop_aspect_ratio(frame, 4 / 3)
 
             # Resize frame if target size is specified
             if target_size is not None:

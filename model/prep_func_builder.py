@@ -75,6 +75,8 @@ class PreprocessingFunctionBuilder:
         self,
         binary: bool = True,
         mask_in_parent: bool = True,
+        ir: bool = False,
+        ir_dir_name: str = 'ir',
     ) -> 'PreprocessingFunctionBuilder':
         """Apply a mask to the image.
 
@@ -85,7 +87,11 @@ class PreprocessingFunctionBuilder:
 
         def _apply_mask(img: Image.Image | np.ndarray, path: Path) -> np.ndarray:
             if mask_in_parent:
-                mask_path = path.parent.parent / 'masks' / path.with_suffix('.png').name
+                mask_path = (
+                    path.parent.parent
+                    / (f'masks_{ir_dir_name}' if ir else 'masks')
+                    / path.with_suffix('.png').name
+                )
             else:
                 mask_path = path.with_suffix('.mask.png')
 
