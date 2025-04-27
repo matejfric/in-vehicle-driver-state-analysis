@@ -23,6 +23,19 @@ print(f'Found {len(all_dirs)} directories')
 pprint(all_dirs)
 
 # COMMAND ----------
+# # Rename files as needed
+# for dir in all_dirs:
+#     path = dir / 'sam2_output/masks'
+
+#     # Sort files in reverse order to avoid overwriting
+#     imgs = sorted(path.glob('*.png'), reverse=True)
+
+#     for img in imgs:
+#         num = int(img.stem)  # '00000' -> 0
+#         new_name = f'{num + 1:05d}.png'  # 0+1=1 -> '00001.png'
+#         img.rename(img.with_name(new_name))
+
+# COMMAND ----------
 # ~2 hours for 14383 images
 
 for dir in all_dirs:

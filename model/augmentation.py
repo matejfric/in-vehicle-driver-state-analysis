@@ -18,7 +18,7 @@ def hard_transforms() -> list:
     https://albumentations.ai/docs/api_reference/full_reference/?h=horizon#albumentations.augmentations.geometric.transforms.HorizontalFlip
     """
     return [
-        # albu.ToGray(p=1),
+        # albu.ToGray(p=0.05),
         albu.CoarseDropout(
             num_holes_range=(1, 3),
             hole_height_range=(16, 32),
