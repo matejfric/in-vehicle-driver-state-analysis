@@ -2,32 +2,32 @@
 
 [![DOI](https://zenodo.org/badge/858760757.svg)](https://doi.org/10.5281/zenodo.15242002)
 
-This repository contains the supplementary source code for the thesis "In-Vehicle Driver State Analysis Using Image Segmentation".
+This repository contains supplementary source code for the diploma thesis *In-Vehicle Driver State Analysis Using Image Segmentation*.
 
-![PipelineAnimation](https://github.com/user-attachments/assets/de14f020-1b32-4931-8702-5cd302d5a9de)
+![PipelineAnimation](https://github.com/user-attachments/assets/4669f0bb-3efb-4efd-88a3-096cf5ff61ed)
 
 (Model results on the Driver Monitoring Dataset [[1]](#ref1).)
 
 ---
 
-- [1. Project Organization](#1-project-organization)
+- [1. Repository Organization](#1-repository-organization)
 - [2. Development Environment](#2-development-environment)
 - [3. What can we do with an RGB image?](#3-what-can-we-do-with-an-rgb-image)
 - [4. References](#4-references)
 
-## 1. Project Organization
+## 1. Repository Organization
 
-- [`model`](model/) - library code
-- [`notebooks`](notebooks/) - runnable code, primarily Jupyter notebooks, and Python scripts used to orchestrate notebook execution with different parameters
-  - [`notebooks/example`](notebooks/example/) - demonstration of an inference pipeline on sample data. Instructions for running the pipeline are provided [here](notebooks/example/README.md)
-  - [`notebooks/datasets`](notebooks/datasets/) - dataset pre-processing
-  - [`notebooks/eda`](notebooks/eda/) - exploratory data analysis
-  - [`notebooks/sam`](notebooks/sam/) - Segment Anything Model 2 (SAM 2) inference (generation of groud truth masks). This module uses a different virtual environment than the rest of the project, as described [here](notebooks/sam/README.md)
-  - [`notebooks/semantic_segmentation`](notebooks/semantic_segmentation/) - semantic segmentation model training, evaluation, and inference
-  - [`notebooks/tae`](notebooks/tae/) - training and evaluation of Temporal Autoencoder (TAE)
-  - [`notebooks/stae`](notebooks/stae/) - training and evaluation of Spatio-Temporal Autoencoder (STAE)
-  - [`notebooks/memory_map`](notebooks/memory_map/) - export training data to continuous memory-mapped files (`np.memmap`) to speed up training and reduce CPU usage, at the cost of increased disk space
-  - [`notebooks/clip`](notebooks/clip/) - OpenAI CLIP model (this is excluded from the thesis)
+- [`model/`](model/) - Library code.
+- [`notebooks/`](notebooks/) - Runnable code, primarily Jupyter notebooks, and Python scripts used to orchestrate notebook execution with varying parameters.
+  - [`notebooks/example/`](notebooks/example/) - Demonstrates an inference pipeline on sample data. Instructions for running the pipeline are provided [here](notebooks/example/README.md).
+  - [`notebooks/datasets/`](notebooks/datasets/) - Dataset preprocessing.
+  - [`notebooks/eda/`](notebooks/eda/) - Exploratory data analysis.
+  - [`notebooks/sam/`](notebooks/sam/) - Segment Anything Model 2 (SAM 2) inference (generation of ground truth masks). This module uses a different virtual environment than the rest of the project, as described [here](notebooks/sam/README.md).
+  - [`notebooks/semantic_segmentation/`](notebooks/semantic_segmentation/) - Semantic segmentation model training, evaluation, and inference.
+  - [`notebooks/tae/`](notebooks/tae/) - Training and evaluation of the Temporal Autoencoder (TAE).
+  - [`notebooks/stae/`](notebooks/stae/) - Training and evaluation of the Spatio-Temporal Autoencoder (STAE).
+  - [`notebooks/memory_map/`](notebooks/memory_map/) - Exports training data to memory-mapped files (`np.memmap`) to speed up training and reduce CPU usage, at the cost of increased disk space.
+  - [`notebooks/clip/`](notebooks/clip/) - OpenAI CLIP model (this topic is not covered in the thesis).
 
 ## 2. Development Environment
 
@@ -90,3 +90,4 @@ mindmap
 7. Jocher, G., Qiu, J., & Chaurasia, A. (2023). Ultralytics YOLO (Version 8.0.0) [Computer software]. <https://github.com/ultralytics/ultralytics>
 8. ONNX Runtime Contributors. (2021). ONNX Runtime (Version 1.21.0) [Computer software]. <https://onnxruntime.ai/>
 9. ONNX Contributors. (2019). ONNX: Open Neural Network Exchange (Version 1.17.0) [Computer software]. <https://onnx.ai/>
+10. Radford, A., Kim, J. W., Hallacy, C., Ramesh, A., Goh, G., Agarwal, S., Sastry, G., Askell, A., Mishkin, P., Clark, J., Krueger, G., & Sutskever, I. (2021). Learning transferable visual models from natural language supervision. arXiv. <https://arxiv.org/abs/2103.00020>
