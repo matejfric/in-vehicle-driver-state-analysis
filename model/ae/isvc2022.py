@@ -4,6 +4,15 @@ import torch.optim
 
 from .common import Decoder, Encoder, TimeDistributed
 
+# Based on
+# -------------------------------------------------------------------
+# Fusek, R., Sojka, E., Gaura, J., Halman, J. (2022).
+# Driver State Detection from In-Car Camera Images.
+# In: Bebis, G., et al. Advances in Visual Computing. ISVC 2022.
+# Lecture Notes in Computer Science, vol 13599. Springer, Cham.
+# https://doi.org/10.1007/978-3-031-20716-7_24
+# -------------------------------------------------------------------
+
 
 class ISCV22Encoder(Encoder):
     def __init__(

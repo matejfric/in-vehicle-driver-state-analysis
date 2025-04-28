@@ -6,6 +6,14 @@ import torch.optim
 
 from .common import Decoder, Encoder, TimeDistributed
 
+# Based on
+# -----------------------------------------------------------------------
+# Fusek, R., Sojka, E., Gaura, J., Halman, J. (2023).
+# Driver Anomaly Detection Using Skeleton Images.
+# In: Bebis, G., et al. Advances in Visual Computing. ISVC 2023.
+# Lecture Notes in Computer Science, vol 14361. Springer, Cham.
+# https://doi.org/10.1007/978-3-031-47969-4_36
+# -----------------------------------------------------------------------
 # V1: LSTM
 # V2: LSTM replaced by dense layers (+ conv layers)
 # V3: LSTM with MLP (without conv layers)
