@@ -12,7 +12,7 @@ job_dir_root = Path(f'jobs/{datetime.now().strftime("%Y-%m-%d-%H%M")}')
 drivers = [1, 2, 3, 4, 5]
 
 # Some choices are only available for DMD and MRL respectively.
-# ['masks', 'images', 'depth', 'source_depth', 'rgb_source_depth', 'rgb', 'rgbd', 'rgbdm']
+# ['masks', 'images', 'depth', 'source_depth', 'rgb_source_depth', 'rgb', 'rgbd', 'rgbdm', 'source_depth_ir_masked']
 source_types = ['rgb']
 
 image_sizes = [64]
